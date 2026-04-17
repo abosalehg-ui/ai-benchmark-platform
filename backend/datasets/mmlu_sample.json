@@ -1,0 +1,162 @@
+[
+  {
+    "id": "mmlu_001",
+    "subject": "anatomy",
+    "question": "Which of the following structures is derived from ectomesenchyme?",
+    "choices": ["Motor neurons", "Skeletal muscles", "Melanocytes", "Sweat glands"],
+    "answer": "C"
+  },
+  {
+    "id": "mmlu_002",
+    "subject": "high_school_mathematics",
+    "question": "What is the value of x in the equation 2x + 5 = 13?",
+    "choices": ["3", "4", "5", "6"],
+    "answer": "B"
+  },
+  {
+    "id": "mmlu_003",
+    "subject": "high_school_world_history",
+    "question": "Which empire fell in 1453 with the conquest of Constantinople?",
+    "choices": ["Roman Empire", "Byzantine Empire", "Ottoman Empire", "Persian Empire"],
+    "answer": "B"
+  },
+  {
+    "id": "mmlu_004",
+    "subject": "professional_law",
+    "question": "In contract law, an offer becomes effective when:",
+    "choices": [
+      "It is signed by the offeror",
+      "It is communicated to the offeree",
+      "It is notarized",
+      "The offeror intends to make it"
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "mmlu_005",
+    "subject": "high_school_physics",
+    "question": "What is the SI unit of force?",
+    "choices": ["Joule", "Watt", "Newton", "Pascal"],
+    "answer": "C"
+  },
+  {
+    "id": "mmlu_006",
+    "subject": "computer_science",
+    "question": "What is the time complexity of binary search on a sorted array of n elements?",
+    "choices": ["O(n)", "O(log n)", "O(n log n)", "O(n^2)"],
+    "answer": "B"
+  },
+  {
+    "id": "mmlu_007",
+    "subject": "high_school_biology",
+    "question": "Which organelle is responsible for producing ATP in eukaryotic cells?",
+    "choices": ["Nucleus", "Ribosome", "Mitochondria", "Golgi apparatus"],
+    "answer": "C"
+  },
+  {
+    "id": "mmlu_008",
+    "subject": "philosophy",
+    "question": "Who wrote 'Critique of Pure Reason'?",
+    "choices": ["David Hume", "Immanuel Kant", "Friedrich Nietzsche", "John Locke"],
+    "answer": "B"
+  },
+  {
+    "id": "mmlu_009",
+    "subject": "high_school_chemistry",
+    "question": "What is the chemical symbol for gold?",
+    "choices": ["Go", "Gd", "Au", "Ag"],
+    "answer": "C"
+  },
+  {
+    "id": "mmlu_010",
+    "subject": "professional_medicine",
+    "question": "Which of the following is the most common cause of upper gastrointestinal bleeding?",
+    "choices": [
+      "Esophageal varices",
+      "Mallory-Weiss tear",
+      "Peptic ulcer disease",
+      "Gastric cancer"
+    ],
+    "answer": "C"
+  },
+  {
+    "id": "mmlu_011",
+    "subject": "econometrics",
+    "question": "In a linear regression model, what does the R-squared value measure?",
+    "choices": [
+      "The slope of the regression line",
+      "The proportion of variance in the dependent variable explained by the model",
+      "The standard error of the residuals",
+      "The number of independent variables"
+    ],
+    "answer": "B"
+  },
+  {
+    "id": "mmlu_012",
+    "subject": "high_school_geography",
+    "question": "Which is the longest river in the world?",
+    "choices": ["Amazon", "Nile", "Yangtze", "Mississippi"],
+    "answer": "B"
+  },
+  {
+    "id": "mmlu_013",
+    "subject": "logical_fallacies",
+    "question": "An argument that attacks the person making the argument rather than the argument itself is called:",
+    "choices": ["Straw man", "Ad hominem", "Red herring", "Appeal to authority"],
+    "answer": "B"
+  },
+  {
+    "id": "mmlu_014",
+    "subject": "abstract_algebra",
+    "question": "How many elements are in the symmetric group S_3?",
+    "choices": ["3", "6", "9", "12"],
+    "answer": "B"
+  },
+  {
+    "id": "mmlu_015",
+    "subject": "astronomy",
+    "question": "What is the closest star to Earth other than the Sun?",
+    "choices": ["Sirius", "Alpha Centauri A", "Proxima Centauri", "Barnard's Star"],
+    "answer": "C"
+  },
+  {
+    "id": "mmlu_016",
+    "subject": "world_religions",
+    "question": "What are the Five Pillars of Islam?",
+    "choices": [
+      "Faith, Prayer, Charity, Fasting, Pilgrimage",
+      "Faith, Hope, Love, Charity, Pilgrimage",
+      "Prayer, Meditation, Study, Service, Compassion",
+      "Tawhid, Risalah, Akhirah, Malaikah, Qadr"
+    ],
+    "answer": "A"
+  },
+  {
+    "id": "mmlu_017",
+    "subject": "high_school_us_history",
+    "question": "In what year did the American Civil War end?",
+    "choices": ["1861", "1863", "1865", "1867"],
+    "answer": "C"
+  },
+  {
+    "id": "mmlu_018",
+    "subject": "moral_disputes",
+    "question": "Which ethical theory holds that the morality of an action is determined by its consequences?",
+    "choices": ["Deontology", "Virtue ethics", "Consequentialism", "Divine command theory"],
+    "answer": "C"
+  },
+  {
+    "id": "mmlu_019",
+    "subject": "machine_learning",
+    "question": "Which of the following is a supervised learning algorithm?",
+    "choices": ["K-means clustering", "Principal component analysis", "Random forest", "Apriori algorithm"],
+    "answer": "C"
+  },
+  {
+    "id": "mmlu_020",
+    "subject": "global_facts",
+    "question": "Which country has the largest population in the world as of 2024?",
+    "choices": ["China", "India", "United States", "Indonesia"],
+    "answer": "B"
+  }
+]

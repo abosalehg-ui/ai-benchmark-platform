@@ -1,0 +1,72 @@
+[
+  {
+    "task_id": "HumanEval/0",
+    "prompt": "from typing import List\n\n\ndef has_close_elements(numbers: List[float], threshold: float) -> bool:\n    \"\"\" Check if in given list of numbers, are any two numbers closer to each other than\n    given threshold.\n    >>> has_close_elements([1.0, 2.0, 3.0], 0.5)\n    False\n    >>> has_close_elements([1.0, 2.8, 3.0, 4.0, 5.0, 2.0], 0.3)\n    True\n    \"\"\"\n",
+    "entry_point": "has_close_elements",
+    "canonical_solution": "    for idx, elem in enumerate(numbers):\n        for idx2, elem2 in enumerate(numbers):\n            if idx != idx2:\n                distance = abs(elem - elem2)\n                if distance < threshold:\n                    return True\n\n    return False\n",
+    "test": "def check(candidate):\n    assert candidate([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.3) == True\n    assert candidate([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.05) == False\n    assert candidate([1.0, 2.0, 5.9, 4.0, 5.0], 0.95) == True\n    assert candidate([1.0, 2.0, 5.9, 4.0, 5.0], 0.8) == False\n    assert candidate([1.0, 2.0, 3.0, 4.0, 5.0, 2.0], 0.1) == True\n    assert candidate([1.1, 2.2, 3.1, 4.1, 5.1], 1.0) == True\n    assert candidate([1.1, 2.2, 3.1, 4.1, 5.1], 0.5) == False\n"
+  },
+  {
+    "task_id": "HumanEval/1",
+    "prompt": "def truncate_number(number: float) -> float:\n    \"\"\" Given a positive floating point number, it can be decomposed into\n    and integer part (largest integer smaller than given number) and decimals\n    (leftover part always smaller than 1).\n\n    Return the decimal part of the number.\n    >>> truncate_number(3.5)\n    0.5\n    \"\"\"\n",
+    "entry_point": "truncate_number",
+    "canonical_solution": "    return number % 1.0\n",
+    "test": "def check(candidate):\n    assert candidate(3.5) == 0.5\n    assert abs(candidate(1.33) - 0.33) < 1e-6\n    assert abs(candidate(123.456) - 0.456) < 1e-6\n"
+  },
+  {
+    "task_id": "HumanEval/2",
+    "prompt": "from typing import List\n\n\ndef below_zero(operations: List[int]) -> bool:\n    \"\"\" You're given a list of deposit and withdrawal operations on a bank account that starts with\n    zero balance. Your task is to detect if at any point the balance of account fallls below zero, and\n    at that point function should return True. Otherwise it should return False.\n    >>> below_zero([1, 2, 3])\n    False\n    >>> below_zero([1, 2, -4, 5])\n    True\n    \"\"\"\n",
+    "entry_point": "below_zero",
+    "canonical_solution": "    balance = 0\n    for op in operations:\n        balance += op\n        if balance < 0:\n            return True\n    return False\n",
+    "test": "def check(candidate):\n    assert candidate([]) == False\n    assert candidate([1, 2, -3, 1, 2, -3]) == False\n    assert candidate([1, 2, -4, 5, 6]) == True\n    assert candidate([1, -1, 2, -2, 5, -5, 4, -4]) == False\n    assert candidate([1, -1, 2, -2, 5, -5, 4, -5]) == True\n    assert candidate([1, -2, 2, -2, 5, -5, 4, -4]) == True\n"
+  },
+  {
+    "task_id": "HumanEval/3",
+    "prompt": "def fizz_buzz(n: int) -> int:\n    \"\"\"Return the number of times the digit 7 appears in integers less than n which are divisible by 11 or 13.\n    >>> fizz_buzz(50)\n    0\n    >>> fizz_buzz(78)\n    2\n    \"\"\"\n",
+    "entry_point": "fizz_buzz",
+    "canonical_solution": "    ns = []\n    for i in range(n):\n        if i % 11 == 0 or i % 13 == 0:\n            ns.append(i)\n    s = ''.join(str(x) for x in ns)\n    return s.count('7')\n",
+    "test": "def check(candidate):\n    assert candidate(50) == 0\n    assert candidate(78) == 2\n    assert candidate(79) == 3\n    assert candidate(100) == 3\n    assert candidate(200) == 6\n"
+  },
+  {
+    "task_id": "HumanEval/4",
+    "prompt": "def is_prime(n: int) -> bool:\n    \"\"\"Return True if n is a prime number.\n    >>> is_prime(6)\n    False\n    >>> is_prime(101)\n    True\n    \"\"\"\n",
+    "entry_point": "is_prime",
+    "canonical_solution": "    if n < 2:\n        return False\n    for i in range(2, int(n**0.5)+1):\n        if n % i == 0:\n            return False\n    return True\n",
+    "test": "def check(candidate):\n    assert candidate(6) == False\n    assert candidate(101) == True\n    assert candidate(11) == True\n    assert candidate(13441) == True\n    assert candidate(61) == True\n    assert candidate(4) == False\n    assert candidate(1) == False\n    assert candidate(2) == True\n"
+  },
+  {
+    "task_id": "HumanEval/5",
+    "prompt": "from typing import List\n\n\ndef sort_third(l: List[int]) -> List[int]:\n    \"\"\"This function takes a list l and returns a list l' such that\n    l' is identical to l in the indicies that are not divisible by three, while its values at the indicies that are divisible by three are equal\n    to the values of the corresponding indicies of l, but sorted.\n    >>> sort_third([1, 2, 3])\n    [1, 2, 3]\n    >>> sort_third([5, 6, 3, 4, 8, 9, 2])\n    [2, 6, 3, 4, 8, 9, 5]\n    \"\"\"\n",
+    "entry_point": "sort_third",
+    "canonical_solution": "    l = list(l)\n    l[::3] = sorted(l[::3])\n    return l\n",
+    "test": "def check(candidate):\n    assert candidate([5, 6, 3, 4, 8, 9, 2]) == [2, 6, 3, 4, 8, 9, 5]\n    assert candidate([5, 8, 3, 1, 2, 6, 4]) == [4, 8, 3, 1, 2, 6, 5]\n    assert candidate([5, 6, 9, 4, 8, 3, 2]) == [2, 6, 9, 4, 8, 3, 5]\n"
+  },
+  {
+    "task_id": "HumanEval/6",
+    "prompt": "def reverse_words(s: str) -> str:\n    \"\"\"Reverse the order of words in a string.\n    >>> reverse_words('hello world')\n    'world hello'\n    \"\"\"\n",
+    "entry_point": "reverse_words",
+    "canonical_solution": "    return ' '.join(s.split()[::-1])\n",
+    "test": "def check(candidate):\n    assert candidate('hello world') == 'world hello'\n    assert candidate('one two three') == 'three two one'\n    assert candidate('a') == 'a'\n    assert candidate('') == ''\n"
+  },
+  {
+    "task_id": "HumanEval/7",
+    "prompt": "from typing import List\n\n\ndef unique_elements(l: List[int]) -> List[int]:\n    \"\"\"Return sorted unique elements in a list.\n    >>> unique_elements([5, 3, 5, 2, 3, 3, 9, 0, 123])\n    [0, 2, 3, 5, 9, 123]\n    \"\"\"\n",
+    "entry_point": "unique_elements",
+    "canonical_solution": "    return sorted(set(l))\n",
+    "test": "def check(candidate):\n    assert candidate([5, 3, 5, 2, 3, 3, 9, 0, 123]) == [0, 2, 3, 5, 9, 123]\n    assert candidate([]) == []\n    assert candidate([1]) == [1]\n"
+  },
+  {
+    "task_id": "HumanEval/8",
+    "prompt": "def fibonacci(n: int) -> int:\n    \"\"\"Return the n-th Fibonacci number (0-indexed). fib(0)=0, fib(1)=1.\n    >>> fibonacci(10)\n    55\n    \"\"\"\n",
+    "entry_point": "fibonacci",
+    "canonical_solution": "    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n",
+    "test": "def check(candidate):\n    assert candidate(0) == 0\n    assert candidate(1) == 1\n    assert candidate(10) == 55\n    assert candidate(20) == 6765\n"
+  },
+  {
+    "task_id": "HumanEval/9",
+    "prompt": "def count_vowels(s: str) -> int:\n    \"\"\"Count the number of vowels (a, e, i, o, u) in a string, case-insensitive.\n    >>> count_vowels('Hello')\n    2\n    \"\"\"\n",
+    "entry_point": "count_vowels",
+    "canonical_solution": "    return sum(1 for c in s.lower() if c in 'aeiou')\n",
+    "test": "def check(candidate):\n    assert candidate('Hello') == 2\n    assert candidate('') == 0\n    assert candidate('AEIOU') == 5\n    assert candidate('xyz') == 0\n    assert candidate('Programming') == 3\n"
+  }
+]
