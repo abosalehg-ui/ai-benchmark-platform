@@ -61,10 +61,13 @@ def get_pricing():
 
 @app.get("/api/ollama/models")
 async def get_ollama_models(base_url: str = "http://localhost:11434"):
-    """جلب النماذج المثبتة محلياً في Ollama."""
+    """جلب النماذج المثبتة محلياً في Ollama.
+
+    يرجع: {"models": [...], "error": str | null}
+    """
     p = OllamaProvider(base_url=base_url)
-    models = await p.list_local_models()
-    return {"models": models}
+    result = await p.list_local_models()
+    return result
 
 
 class RunRequestBody(BaseModel):

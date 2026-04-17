@@ -14,16 +14,38 @@ class OllamaProvider(BaseProvider):
     def __init__(self, api_key: str = "", base_url: str = "http://localhost:11434"):
         super().__init__(api_key=api_key, base_url=base_url)
 
-    async def list_local_models(self) -> list[str]:
-        """جلب قائمة بالنماذج المثبتة محلياً."""
+    async def list_local_models(self) -> dict:
+        """جلب قائمة بالنماذج المثبتة محلياً.
+
+        يرجع dict فيه models (قائمة) + error (نص أو None).
+        """
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 r = await client.get(f"{self.base_url}/api/tags")
                 r.raise_for_status()
                 data = r.json()
-                return [m["name"] for m in data.get("models", [])]
-        except Exception:
-            return []
+                models = [m["name"] for m in data.get("models", [])]
+                return {"models": models, "error": None}
+        except httpx.ConnectError as e:
+            return {
+                "models": [],
+                "error": f"ما قدرنا نتصل بـ Ollama على {self.base_url}. تأكد إنه شغّال: 'ollama serve' أو من تطبيق Ollama. ({e})",
+            }
+        except httpx.TimeoutException:
+            return {
+                "models": [],
+                "error": f"انتهى الوقت (15s) عند الاتصال بـ {self.base_url}. Ollama قد يكون بطيئاً جداً أو محظوراً بجدار الحماية.",
+            }
+        except httpx.HTTPStatusError as e:
+            return {
+                "models": [],
+                "error": f"Ollama رجّع خطأ HTTP {e.response.status_code}: {e.response.text[:200]}",
+            }
+        except Exception as e:
+            return {
+                "models": [],
+                "error": f"{type(e).__name__}: {e}",
+            }
 
     async def complete(
         self,

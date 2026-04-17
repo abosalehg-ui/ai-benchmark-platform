@@ -11,6 +11,7 @@ const state = {
   selectedBenchmark: null,
   models: [], // [{provider, model}]
   ollamaModels: [],
+  ollamaError: null,
   currentRunId: null,
   liveData: {}, // { "provider:model": { dots: [], n_correct, total_cost, ... } }
   chart: null,
@@ -54,8 +55,12 @@ async function loadOllamaModels() {
     const r = await fetch(API + '/api/ollama/models?base_url=' + encodeURIComponent(url));
     const data = await r.json();
     state.ollamaModels = data.models || [];
-  } catch {
+    state.ollamaError = data.error || null;
+    if (data.error) console.warn('Ollama error:', data.error);
+  } catch (e) {
     state.ollamaModels = [];
+    state.ollamaError = 'فشل الاتصال بـ backend: ' + e.message;
+    console.error(e);
   }
 }
 
@@ -99,9 +104,13 @@ function renderModels() {
       if (p.id === m.provider) o.selected = true;
       provSel.appendChild(o);
     });
-    provSel.addEventListener('change', () => {
+    provSel.addEventListener('change', async () => {
       state.models[idx].provider = provSel.value;
       state.models[idx].model = '';
+      // عند اختيار Ollama نعيد جلب النماذج ديناميكياً
+      if (provSel.value === 'ollama') {
+        await loadOllamaModels();
+      }
       renderModels();
       updateCostEstimate();
     });
@@ -113,7 +122,13 @@ function renderModels() {
     if (!models.length) {
       const o = document.createElement('option');
       o.value = '';
-      o.textContent = m.provider === 'ollama' ? '— لا توجد نماذج محلية —' : '— اختر —';
+      if (m.provider === 'ollama') {
+        o.textContent = state.ollamaError
+          ? '⚠ ' + state.ollamaError.substring(0, 60) + '...'
+          : '— لا توجد نماذج محلية —';
+      } else {
+        o.textContent = '— اختر —';
+      }
       modelSel.appendChild(o);
     }
     models.forEach(mn => {
@@ -143,6 +158,22 @@ function renderModels() {
 
     row.appendChild(provSel);
     row.appendChild(modelSel);
+
+    // زر تحديث خاص بـ Ollama
+    if (m.provider === 'ollama') {
+      const refreshBtn = document.createElement('button');
+      refreshBtn.className = 'remove-btn';
+      refreshBtn.textContent = '↻';
+      refreshBtn.title = 'تحديث نماذج Ollama';
+      refreshBtn.style.background = 'transparent';
+      refreshBtn.addEventListener('click', async () => {
+        refreshBtn.textContent = '⏳';
+        await loadOllamaModels();
+        renderModels();
+      });
+      row.appendChild(refreshBtn);
+    }
+
     row.appendChild(removeBtn);
     c.appendChild(row);
   });
