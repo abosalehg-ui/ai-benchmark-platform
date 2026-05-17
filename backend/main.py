@@ -290,6 +290,13 @@ def delete_run(run_id: str):
     return {"ok": True}
 
 
+@app.get("/api/sandbox/status")
+def get_sandbox_status():
+    """معلومات عن sandbox backend الحالي (docker / subprocess)."""
+    from backend.sandbox import backend_status
+    return backend_status()
+
+
 @app.get("/api/cache/stats")
 def get_cache_stats():
     return db.cache_stats()

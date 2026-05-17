@@ -623,6 +623,29 @@ input:focus, select:focus {
 
 .checkbox input { width: auto; }
 
+.sandbox-status {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  margin: 6px 0 8px;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-elev);
+}
+.sandbox-status.sandbox-ok {
+  border-color: var(--success);
+  background: rgba(63, 185, 138, 0.10);
+}
+.sandbox-status.sandbox-warn {
+  border-color: var(--warning);
+  background: rgba(230, 162, 60, 0.10);
+}
+.sandbox-status code {
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
 #keys-status {
   margin-top: 12px;
   font-size: 13px;

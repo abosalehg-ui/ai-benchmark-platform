@@ -160,6 +160,53 @@ def test_sandbox_runs_simple_code():
         timeout=5,
     )
     assert result.passed, f"فشل الاختبار: {result.error} / {result.stderr}"
+    assert result.backend in {"subprocess", "docker"}
+
+
+def test_sandbox_backend_status_shape():
+    """backend_status يرجع dict كامل ومتسق."""
+    from backend.sandbox import backend_status, current_backend_name
+
+    status = backend_status()
+    assert "backend" in status
+    assert status["backend"] in {"subprocess", "docker"}
+    assert isinstance(status["docker_available"], bool)
+    assert isinstance(status["is_isolated"], bool)
+    assert status["backend"] == current_backend_name()
+
+
+def test_sandbox_backend_selection_env(monkeypatch):
+    """متغيّر SANDBOX_BACKEND يتحكم بالاختيار."""
+    from backend.sandbox import current_backend_name
+
+    monkeypatch.setenv("SANDBOX_BACKEND", "subprocess")
+    assert current_backend_name() == "subprocess"
+
+    monkeypatch.setenv("SANDBOX_BACKEND", "docker")
+    assert current_backend_name() == "docker"
+
+    # auto بدون docker = subprocess
+    monkeypatch.setenv("SANDBOX_BACKEND", "auto")
+    from backend.sandbox import docker_runner
+    expected = "docker" if docker_runner.is_available() else "subprocess"
+    assert current_backend_name() == expected
+
+
+def test_docker_runner_skip_if_unavailable():
+    """Docker runner — اختبار e2e فقط إذا Docker متاح وتم تفعيل RUN_DOCKER_TESTS."""
+    import os
+    import pytest
+    from backend.sandbox import docker_runner
+
+    if not docker_runner.is_available() or os.getenv("RUN_DOCKER_TESTS") != "1":
+        pytest.skip("Docker غير متاح أو RUN_DOCKER_TESTS!=1")
+
+    r = docker_runner.run(
+        "print('hello from sandbox')", "", timeout=15,
+    )
+    assert r.backend == "docker"
+    assert r.passed, f"فشل: {r.error} / {r.stderr}"
+    assert "hello" in r.stdout
 
 
 def test_sandbox_blocks_dangerous_code():
