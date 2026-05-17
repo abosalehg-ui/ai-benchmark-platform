@@ -15,6 +15,7 @@ const state = {
   ollamaModels: [],
   ollamaError: null,
   currentRunId: null,
+  currentRunData: null,
   liveData: {}, // { "provider:model": { dots: [], n_correct, total_cost, ... } }
   chart: null,
 };
@@ -395,11 +396,11 @@ async function runBenchmark() {
           const key = `${payload.provider}:${payload.model}`;
           const m = state.liveData[key];
           if (m) {
-            let dot;
-            if (payload.error) dot = 'error';
-            else if (payload.cache_hit) dot = 'cache';
-            else dot = payload.correct ? 'correct' : 'wrong';
-            m.dots.push(dot);
+            let dotKind;
+            if (payload.error) dotKind = 'error';
+            else if (payload.cache_hit) dotKind = 'cache';
+            else dotKind = payload.correct ? 'correct' : 'wrong';
+            m.dots.push({ kind: dotKind, pid: payload.problem_id, latency: payload.latency_ms });
             if (payload.correct) m.n_correct++;
             if (payload.cache_hit) m.n_cached = (m.n_cached || 0) + 1;
             m.total_cost = payload.running_cost;
@@ -446,14 +447,17 @@ function renderLiveModels() {
     const cachedNote = m.n_cached ? ` • ${m.n_cached} cache` : '';
     const div = document.createElement('div');
     div.className = 'live-model';
+    const dotsHtml = m.dots.map(d => {
+      const label = d.kind === 'cache' ? 'cache hit' : (d.kind === 'correct' ? 'صحيح' : (d.kind === 'wrong' ? 'خطأ' : 'خطأ تشغيل'));
+      const title = `${d.pid || ''} — ${label} (${(d.latency || 0).toFixed(0)}ms)`;
+      return `<div class="dot ${d.kind}" title="${title}"></div>`;
+    }).join('');
     div.innerHTML = `
       <div class="live-model-header">
         <span class="live-model-name">${m.provider} / ${m.model}</span>
         <span class="live-model-stat">${acc}% • $${m.total_cost.toFixed(4)}${cachedNote}</span>
       </div>
-      <div class="dot-grid">
-        ${m.dots.map(d => `<div class="dot ${d}" title="${d}"></div>`).join('')}
-      </div>
+      <div class="dot-grid">${dotsHtml}</div>
     `;
     c.appendChild(div);
   });
@@ -463,8 +467,16 @@ function renderLiveModels() {
 async function showSummary(runId) {
   const r = await fetch(API + '/api/runs/' + runId);
   const data = await r.json();
+  state.currentRunData = data;
   const summary = document.getElementById('run-summary');
   summary.classList.remove('hidden');
+
+  // Head-to-Head نعرضها فقط إذا كان فيه ≥ 2 نموذج
+  if (data.models && data.models.length >= 2) {
+    renderH2H(runId);
+  } else {
+    document.getElementById('h2h-section').classList.add('hidden');
+  }
 
   const tbl = document.getElementById('summary-table');
   let html = `<table>
@@ -544,6 +556,104 @@ document.getElementById('view-details-btn').addEventListener('click', async () =
 document.getElementById('modal-close').addEventListener('click', () => {
   document.getElementById('details-modal').classList.add('hidden');
 });
+
+// ============ Head-to-Head Matrix ============
+async function renderH2H(runId) {
+  const section = document.getElementById('h2h-section');
+  const container = document.getElementById('h2h-matrix');
+  try {
+    const r = await fetch(`${API}/api/runs/${runId}/h2h`);
+    if (!r.ok) {
+      section.classList.add('hidden');
+      return;
+    }
+    const data = await r.json();
+    const models = data.models;
+    const matrix = data.matrix;
+    if (!models || models.length < 2) {
+      section.classList.add('hidden');
+      return;
+    }
+    section.classList.remove('hidden');
+
+    let html = '<table class="h2h-table"><thead><tr><th></th>';
+    models.forEach(m => { html += `<th>${m.model}</th>`; });
+    html += '</tr></thead><tbody>';
+
+    matrix.forEach((row, i) => {
+      html += `<tr><th>${models[i].model}</th>`;
+      row.forEach((cell, j) => {
+        if (i === j) {
+          html += '<td class="h2h-cell h2h-diag">—</td>';
+        } else {
+          const pct = cell.a_wins_pct;
+          const intensity = Math.min(pct / 50, 1); // 50% = full color
+          const cls = pct > 0 ? 'h2h-win' : (cell.b_only > 0 ? 'h2h-lose' : 'h2h-tie');
+          const title = `الصف تفوّق وحده: ${cell.a_only} • العمود تفوّق وحده: ${cell.b_only} • كلاهما صحيح: ${cell.both_correct} • كلاهما خطأ: ${cell.both_wrong} • مقارَن: ${cell.n_compared}`;
+          html += `<td class="h2h-cell ${cls}" style="--intensity:${intensity}" title="${title}">${pct}%<br><span class="h2h-detail">${cell.a_only}/${cell.n_compared}</span></td>`;
+        }
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  } catch (e) {
+    section.classList.add('hidden');
+    console.error('h2h error:', e);
+  }
+}
+
+// ============ Diff View (side-by-side) ============
+function showDiffView() {
+  const data = state.currentRunData;
+  if (!data || !data.details) {
+    alert('لا توجد بيانات لعرضها');
+    return;
+  }
+  // اجمع النتائج حسب problem_id
+  const byProblem = {};
+  data.details.forEach(d => {
+    if (!byProblem[d.problem_id]) byProblem[d.problem_id] = [];
+    byProblem[d.problem_id].push(d);
+  });
+
+  const body = document.getElementById('modal-body');
+  body.innerHTML = `<h2>مقارنة جنباً إلى جنب — Run ${data.id}</h2>
+    <p class="muted small">كل صف يعرض نفس السؤال على كل النماذج.</p>`;
+
+  Object.entries(byProblem).forEach(([pid, results]) => {
+    const section = document.createElement('div');
+    section.className = 'diff-problem';
+    const allSame = new Set(results.map(r => r.correct)).size === 1;
+    const headerCls = allSame ? 'diff-agree' : 'diff-disagree';
+    section.innerHTML = `<div class="diff-problem-header ${headerCls}">
+      <strong>${pid}</strong>
+      <span class="muted small">${allSame ? '✓ توافق' : '⚠ اختلاف'}</span>
+    </div>`;
+
+    const grid = document.createElement('div');
+    grid.className = 'diff-grid';
+    results.forEach(r => {
+      const cell = document.createElement('div');
+      const status = r.error ? 'error' : (r.correct ? 'success' : 'error');
+      cell.className = `diff-cell diff-${status}`;
+      cell.innerHTML = `
+        <div class="diff-cell-header">
+          <span class="muted small">${r.provider}/${r.model}</span>
+          <span class="badge ${status}">${r.error ? 'خطأ' : (r.correct ? 'صحيح' : 'خطأ')}</span>
+        </div>
+        <div class="diff-response">${escapeHtml((r.response_text || '').slice(0, 800))}</div>
+        ${r.judgment ? `<div class="muted small">${escapeHtml(r.judgment)}</div>` : ''}
+      `;
+      grid.appendChild(cell);
+    });
+    section.appendChild(grid);
+    body.appendChild(section);
+  });
+  document.getElementById('details-modal').classList.remove('hidden');
+}
+
+document.getElementById('view-diff-btn').addEventListener('click', showDiffView);
 
 // ============ Export ============
 function exportRun(fmt) {

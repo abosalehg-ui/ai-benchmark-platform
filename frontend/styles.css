@@ -167,6 +167,85 @@ main {
   .grid-layout { grid-template-columns: 1fr; }
 }
 
+/* ============= MOBILE RESPONSIVE ============= */
+@media (max-width: 720px) {
+  main { padding: 16px; }
+
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+
+  .brand { gap: 10px; }
+  .brand h1 { font-size: 17px; }
+  .subtitle { font-size: 11px; }
+  .logo-mark { width: 36px; height: 36px; font-size: 20px; }
+
+  nav {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+  .tab {
+    padding: 8px 12px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .theme-toggle { margin-inline-start: auto; }
+
+  .panel { padding: 16px; }
+  .panel-header h2 { font-size: 15px; }
+
+  .model-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .model-row .remove-btn {
+    width: 100%;
+    height: 32px;
+  }
+
+  .field-inline {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .field-inline input { width: 100%; }
+
+  .export-row { flex-direction: column; }
+  .export-row button { width: 100%; }
+
+  .history-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    text-align: start;
+  }
+
+  .modal-content {
+    width: 96%;
+    max-height: 92vh;
+    padding: 16px;
+  }
+
+  .h2h-table {
+    font-size: 10px;
+  }
+  .h2h-table th, .h2h-table td { padding: 6px 4px; min-width: 60px; }
+
+  .diff-grid { grid-template-columns: 1fr; }
+
+  #results-chart { max-height: 220px; }
+}
+
+@media (max-width: 480px) {
+  .brand h1 { font-size: 15px; }
+  .subtitle { display: none; }
+  .tab { padding: 6px 10px; font-size: 12px; }
+  .panel { padding: 12px; }
+}
+
 /* ============= PANELS ============= */
 .panel {
   background: var(--bg-panel);
@@ -770,6 +849,146 @@ footer a:hover { text-decoration: underline; }
   background: var(--accent);
   opacity: 0.6;
   border: 1px solid var(--accent-soft);
+}
+
+/* ============= HEAD-TO-HEAD MATRIX ============= */
+.h2h-section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.h2h-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.h2h-matrix {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.h2h-table {
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-size: 12px;
+}
+
+.h2h-table th, .h2h-table td {
+  padding: 8px 10px;
+  text-align: center;
+  font-family: var(--font-mono);
+  border-radius: 6px;
+}
+
+.h2h-table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+  min-width: 90px;
+  background: var(--bg-elev);
+}
+
+.h2h-cell {
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border-soft);
+  min-width: 80px;
+}
+
+.h2h-cell.h2h-diag {
+  background: transparent;
+  border: 1px dashed var(--border-soft);
+  color: var(--text-muted);
+}
+
+.h2h-cell.h2h-win {
+  background: rgba(63, 185, 138, calc(0.15 + 0.4 * var(--intensity, 0)));
+  border-color: var(--success);
+  color: var(--text);
+}
+
+.h2h-cell.h2h-lose {
+  background: rgba(226, 92, 92, 0.10);
+  border-color: rgba(226, 92, 92, 0.5);
+}
+
+.h2h-cell.h2h-tie {
+  background: var(--bg-elev);
+}
+
+.h2h-detail {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ============= DIFF VIEW ============= */
+.diff-problem {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.diff-problem-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border-soft);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.diff-problem-header.diff-disagree {
+  color: var(--warning);
+}
+
+.diff-problem-header.diff-agree {
+  color: var(--success);
+}
+
+.diff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.diff-cell {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.diff-cell.diff-success { border-left: 3px solid var(--success); }
+.diff-cell.diff-error { border-left: 3px solid var(--danger); }
+
+.diff-cell-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.diff-response {
+  background: var(--bg);
+  padding: 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 6px;
+  direction: ltr;
+  text-align: left;
 }
 
 /* ============= BUDGET WARNING ============= */

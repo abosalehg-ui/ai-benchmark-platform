@@ -209,3 +209,64 @@ def delete_run(run_id: str) -> bool:
         conn.execute("DELETE FROM results WHERE run_id = ?", (run_id,))
         cur = conn.execute("DELETE FROM runs WHERE id = ?", (run_id,))
         return cur.rowcount > 0
+
+
+def head_to_head(run_id: str) -> dict | None:
+    """يحسب مصفوفة المقارنة الزوجية بين النماذج في run معين.
+
+    لكل زوج (A, B) من النماذج، يحسب على المسائل المشتركة:
+    - both_correct: كلاهما أصاب
+    - a_only: A أصاب وحده
+    - b_only: B أصاب وحده
+    - both_wrong: كلاهما أخطأ
+    - a_wins: نسبة المسائل التي تفوّق فيها A وحده
+    - n_compared: عدد المسائل المشتركة
+    """
+    with get_conn() as conn:
+        if not conn.execute("SELECT 1 FROM runs WHERE id = ?", (run_id,)).fetchone():
+            return None
+        rows = conn.execute(
+            "SELECT provider, model, problem_id, correct FROM results WHERE run_id = ?",
+            (run_id,),
+        ).fetchall()
+
+    by_model: dict[tuple[str, str], dict[str, bool]] = {}
+    for r in rows:
+        key = (r["provider"], r["model"])
+        by_model.setdefault(key, {})[r["problem_id"]] = bool(r["correct"])
+
+    models = sorted(by_model.keys())
+    matrix: list[list[dict]] = []
+    for a in models:
+        row: list[dict] = []
+        a_results = by_model[a]
+        for b in models:
+            b_results = by_model[b]
+            both_c = a_only = b_only = both_w = 0
+            for pid, a_corr in a_results.items():
+                if pid not in b_results:
+                    continue
+                b_corr = b_results[pid]
+                if a_corr and b_corr:
+                    both_c += 1
+                elif a_corr and not b_corr:
+                    a_only += 1
+                elif b_corr and not a_corr:
+                    b_only += 1
+                else:
+                    both_w += 1
+            n = both_c + a_only + b_only + both_w
+            row.append({
+                "both_correct": both_c,
+                "a_only": a_only,
+                "b_only": b_only,
+                "both_wrong": both_w,
+                "n_compared": n,
+                "a_wins_pct": round((a_only / n) * 100, 1) if n else 0.0,
+            })
+        matrix.append(row)
+
+    return {
+        "models": [{"provider": p, "model": m} for p, m in models],
+        "matrix": matrix,
+    }

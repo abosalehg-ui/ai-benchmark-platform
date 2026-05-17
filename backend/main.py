@@ -169,6 +169,15 @@ def get_run(run_id: str):
     return run
 
 
+@app.get("/api/runs/{run_id}/h2h")
+def get_run_h2h(run_id: str):
+    """مصفوفة المقارنة الزوجية (Head-to-Head) للـ run."""
+    h2h = db.head_to_head(run_id)
+    if h2h is None:
+        raise HTTPException(404, "Run غير موجود")
+    return h2h
+
+
 @app.get("/api/runs/{run_id}/export")
 def export_run(run_id: str, format: str = "json"):
     """تصدير نتائج Run كاملة بصيغة JSON أو CSV."""

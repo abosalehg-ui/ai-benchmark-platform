@@ -297,6 +297,9 @@ class MyBenchmark(BaseBenchmark):
 - [x] Dark / Light theme
 - [x] CI (GitHub Actions: ruff + pytest على Python 3.10/3.11/3.12)
 - [x] توسيع البنشمارك السعودي إلى 100 سؤال + إضافة تصنيف الإثبات والشركات
+- [x] Head-to-Head matrix للمقارنة الزوجية
+- [x] Diff view (مقارنة جنباً إلى جنب للإجابات على نفس السؤال)
+- [x] Responsive للجوال
 - [ ] توسيع البنشمارك السعودي إلى 200+ سؤال
 - [ ] دعم Cohere و Groq
 - [ ] Docker Compose للنشر الذاتي + Sandbox آمن (Docker / Pyodide)
