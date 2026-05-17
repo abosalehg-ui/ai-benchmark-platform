@@ -1,6 +1,7 @@
 """قاعدة بيانات SQLite لحفظ الـ runs والنتائج."""
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import time
@@ -46,7 +47,63 @@ def init_db() -> None:
 
         CREATE INDEX IF NOT EXISTS idx_results_run ON results(run_id);
         CREATE INDEX IF NOT EXISTS idx_results_model ON results(provider, model);
+
+        CREATE TABLE IF NOT EXISTS response_cache (
+            cache_key TEXT PRIMARY KEY,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            response_text TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL,
+            output_tokens INTEGER NOT NULL,
+            cost_usd REAL NOT NULL,
+            latency_ms REAL NOT NULL,
+            created_at REAL NOT NULL
+        );
         """)
+
+
+def make_cache_key(provider: str, model: str, prompt: str, system: str | None, temperature: float) -> str:
+    payload = json.dumps(
+        {"p": provider, "m": model, "q": prompt, "s": system or "", "t": temperature},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def cache_get(key: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM response_cache WHERE cache_key = ?", (key,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def cache_put(key: str, provider: str, model: str, *, text: str, input_tokens: int,
+              output_tokens: int, cost_usd: float, latency_ms: float) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO response_cache
+            (cache_key, provider, model, response_text, input_tokens, output_tokens,
+             cost_usd, latency_ms, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (key, provider, model, text, input_tokens, output_tokens,
+             cost_usd, latency_ms, time.time()),
+        )
+
+
+def cache_stats() -> dict:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(cost_usd), 0) AS saved_cost FROM response_cache"
+        ).fetchone()
+        return {"entries": row["n"], "cached_cost_value_usd": round(row["saved_cost"], 6)}
+
+
+def cache_clear() -> int:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM response_cache")
+        return cur.rowcount
 
 
 @contextmanager

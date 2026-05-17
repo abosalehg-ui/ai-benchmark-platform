@@ -1,0 +1,20 @@
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+ignore = [
+    "E501",  # طول السطر — مرن للنصوص العربية
+    "E741",  # حروف عربية كأسماء متغيرات مقبولة في سياقنا
+    "B008",  # function call in default arg — مقبول مع FastAPI Depends
+    "B905",  # zip بدون strict — موروث
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]  # imports بعد إضافة sys.path
+"backend/main.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

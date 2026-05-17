@@ -24,6 +24,7 @@
     <button class="tab active" data-tab="run">تشغيل اختبار</button>
     <button class="tab" data-tab="history">السجل</button>
     <button class="tab" data-tab="settings">المفاتيح</button>
+    <button id="theme-toggle" class="theme-toggle" title="تبديل المظهر" aria-label="تبديل المظهر">🌓</button>
   </nav>
 </header>
 
@@ -43,6 +44,12 @@
           <label for="n-problems">عدد المسائل</label>
           <input type="number" id="n-problems" min="1" max="50" value="5" />
           <small>كل مسألة = استدعاء واحد لكل نموذج. ابدأ بقليل.</small>
+        </div>
+
+        <div id="categories-wrap" class="field-group hidden">
+          <label>تصنيفات محدّدة (اختياري)</label>
+          <div id="categories-list" class="categories-list"></div>
+          <small>اتركها فارغة لتشمل كل التصنيفات.</small>
         </div>
       </div>
 
@@ -68,6 +75,17 @@
           <div class="muted">سيُحسب فعلياً أثناء التشغيل</div>
         </div>
 
+        <div class="run-options">
+          <label class="checkbox">
+            <input type="checkbox" id="use-cache" checked />
+            <span>استخدم الـ cache (يوفّر تكلفة عند إعادة التشغيل)</span>
+          </label>
+          <div class="field-inline">
+            <label for="budget-usd">حدّ التكلفة بالدولار (اختياري)</label>
+            <input type="number" id="budget-usd" min="0" step="0.01" placeholder="مثال: 0.50" />
+          </div>
+        </div>
+
         <button id="run-btn" class="btn-primary">▶ شغّل الاختبار</button>
 
         <div id="progress-area" class="hidden">
@@ -85,7 +103,11 @@
         <div id="run-summary" class="hidden">
           <h3>ملخّص الاختبار</h3>
           <div id="summary-table"></div>
-          <button id="view-details-btn" class="btn-secondary">عرض التفاصيل الكاملة</button>
+          <div class="export-row">
+            <button id="view-details-btn" class="btn-secondary">عرض التفاصيل الكاملة</button>
+            <button id="export-json-btn" class="btn-secondary small">⬇ JSON</button>
+            <button id="export-csv-btn" class="btn-secondary small">⬇ CSV</button>
+          </div>
         </div>
       </div>
     </div>

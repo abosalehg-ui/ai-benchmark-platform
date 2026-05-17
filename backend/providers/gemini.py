@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import httpx
 
+from backend.providers._http import post_with_retry
 from backend.providers.base import BaseProvider, ModelResponse, measure_latency
 
 
@@ -36,10 +37,8 @@ class GeminiProvider(BaseProvider):
 
         with measure_latency() as t:
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    r = await client.post(url, json=body)
-                    r.raise_for_status()
-                    data = r.json()
+                r = await post_with_retry(url, json=body, timeout=120.0)
+                data = r.json()
             except httpx.HTTPStatusError as e:
                 return ModelResponse(
                     text="",

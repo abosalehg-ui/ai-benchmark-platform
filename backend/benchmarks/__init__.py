@@ -37,16 +37,34 @@ def list_benchmarks() -> list[dict]:
         try:
             problems = inst.load()
             count = len(problems)
+            categories = sorted({p.metadata.get("category") for p in problems if p.metadata.get("category")})
         except FileNotFoundError:
             count = 0
+            categories = []
         result.append({
             "id": key,
             "name": inst.display_name,
             "description": inst.description,
             "problems_count": count,
             "needs_judge": key == "llm_judge",
+            "categories": categories,
         })
     return result
 
 
-__all__ = ["BENCHMARKS", "BaseBenchmark", "Problem", "Score", "get_benchmark", "make_benchmark", "list_benchmarks"]
+def get_benchmark_categories(name: str) -> list[str]:
+    """ارجع تصنيفات البنشمارك إذا كانت موجودة في الـ metadata."""
+    if name not in BENCHMARKS:
+        raise ValueError(f"بنشمارك غير معروف: {name}")
+    inst = BENCHMARKS[name]()
+    try:
+        problems = inst.load()
+    except FileNotFoundError:
+        return []
+    return sorted({p.metadata.get("category") for p in problems if p.metadata.get("category")})
+
+
+__all__ = [
+    "BENCHMARKS", "BaseBenchmark", "Problem", "Score",
+    "get_benchmark", "make_benchmark", "list_benchmarks", "get_benchmark_categories",
+]

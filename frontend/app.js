@@ -9,6 +9,7 @@ const state = {
   benchmarks: [],
   providers: [],
   selectedBenchmark: null,
+  selectedCategories: new Set(),
   models: [], // [{provider, model}]
   ollamaModels: [],
   ollamaError: null,
@@ -27,6 +28,21 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (btn.dataset.tab === 'history') loadHistory();
   });
 });
+
+// ============ Theme ============
+(function initTheme() {
+  const saved = localStorage.getItem('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  const btn = document.getElementById('theme-toggle');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+    });
+  }
+})();
 
 // ============ Init ============
 async function init() {
@@ -71,14 +87,44 @@ function renderBenchmarks() {
     const card = document.createElement('div');
     card.className = 'bench-card';
     card.dataset.id = b.id;
-    card.innerHTML = `<h4>${b.name}</h4><p>${b.description}</p>`;
+    const catCount = (b.categories || []).length;
+    const catNote = catCount ? `<small class="muted">${catCount} تصنيف</small>` : '';
+    card.innerHTML = `<h4>${b.name}</h4><p>${b.description}</p>${catNote}`;
     card.addEventListener('click', () => {
       state.selectedBenchmark = b.id;
+      state.selectedCategories = new Set();
       document.querySelectorAll('.bench-card').forEach(x => x.classList.remove('selected'));
       card.classList.add('selected');
+      renderCategories(b.categories || []);
       updateCostEstimate();
     });
     c.appendChild(card);
+  });
+}
+
+function renderCategories(categories) {
+  const wrap = document.getElementById('categories-wrap');
+  const list = document.getElementById('categories-list');
+  list.innerHTML = '';
+  if (!categories.length) {
+    wrap.classList.add('hidden');
+    return;
+  }
+  wrap.classList.remove('hidden');
+  categories.forEach(cat => {
+    const chip = document.createElement('span');
+    chip.className = 'cat-chip';
+    chip.textContent = cat;
+    chip.addEventListener('click', () => {
+      if (state.selectedCategories.has(cat)) {
+        state.selectedCategories.delete(cat);
+        chip.classList.remove('active');
+      } else {
+        state.selectedCategories.add(cat);
+        chip.classList.add('active');
+      }
+    });
+    list.appendChild(chip);
   });
 }
 
@@ -244,6 +290,12 @@ async function runBenchmark() {
   }
 
   const n = parseInt(document.getElementById('n-problems').value || '5', 10);
+  const useCache = document.getElementById('use-cache').checked;
+  const budgetVal = parseFloat(document.getElementById('budget-usd').value);
+  const budgetUsd = Number.isFinite(budgetVal) && budgetVal > 0 ? budgetVal : null;
+  const enforceSafety = (localStorage.getItem('enforce_safety') ?? 'true') === 'true';
+  const categories = Array.from(state.selectedCategories);
+
   const targets = validModels.map(m => ({
     provider: m.provider,
     model: m.model,
@@ -289,6 +341,10 @@ async function runBenchmark() {
         n_problems: n,
         targets,
         judge,
+        use_cache: useCache,
+        budget_usd: budgetUsd,
+        categories,
+        enforce_safety: enforceSafety,
       }),
     });
 
@@ -329,8 +385,13 @@ async function runBenchmark() {
           const key = `${payload.provider}:${payload.model}`;
           const m = state.liveData[key];
           if (m) {
-            m.dots.push(payload.error ? 'error' : (payload.correct ? 'correct' : 'wrong'));
+            let dot;
+            if (payload.error) dot = 'error';
+            else if (payload.cache_hit) dot = 'cache';
+            else dot = payload.correct ? 'correct' : 'wrong';
+            m.dots.push(dot);
             if (payload.correct) m.n_correct++;
+            if (payload.cache_hit) m.n_cached = (m.n_cached || 0) + 1;
             m.total_cost = payload.running_cost;
             m.total_latency += payload.latency_ms || 0;
             m.n_done++;
@@ -338,8 +399,14 @@ async function runBenchmark() {
           const pct = (doneCalls / totalCalls) * 100;
           document.getElementById('progress-fill').style.width = pct + '%';
           document.getElementById('progress-text').textContent =
-            `${doneCalls}/${totalCalls} — ${payload.provider}/${payload.model} مسألة ${payload.i}/${payload.n}`;
+            `${doneCalls}/${totalCalls} — ${payload.provider}/${payload.model} مسألة ${payload.i}/${payload.n}` +
+            (payload.cache_hit ? ' (من الـ cache)' : '');
           renderLiveModels();
+        } else if (evType === 'budget_exceeded') {
+          const warn = document.createElement('div');
+          warn.className = 'budget-warning';
+          warn.innerHTML = `⚠ <strong>تجاوز الميزانية:</strong> أُنفق $${payload.spent_usd.toFixed(4)} من حدّ $${payload.budget_usd.toFixed(2)}. توقّف التشغيل.`;
+          document.getElementById('progress-area').appendChild(warn);
         } else if (evType === 'model_done') {
           // نحفظ الإحصائيات النهائية
           const key = `${payload.provider}:${payload.model}`;
@@ -366,15 +433,16 @@ function renderLiveModels() {
   Object.values(state.liveData).forEach(m => {
     const total = m.n_done || 1;
     const acc = ((m.n_correct / total) * 100).toFixed(1);
+    const cachedNote = m.n_cached ? ` • ${m.n_cached} cache` : '';
     const div = document.createElement('div');
     div.className = 'live-model';
     div.innerHTML = `
       <div class="live-model-header">
         <span class="live-model-name">${m.provider} / ${m.model}</span>
-        <span class="live-model-stat">${acc}% • $${m.total_cost.toFixed(4)}</span>
+        <span class="live-model-stat">${acc}% • $${m.total_cost.toFixed(4)}${cachedNote}</span>
       </div>
       <div class="dot-grid">
-        ${m.dots.map(d => `<div class="dot ${d}"></div>`).join('')}
+        ${m.dots.map(d => `<div class="dot ${d}" title="${d}"></div>`).join('')}
       </div>
     `;
     c.appendChild(div);
@@ -404,8 +472,15 @@ async function showSummary(runId) {
   html += `</table>`;
   tbl.innerHTML = html;
 
-  // Chart
+  // Chart — يقرأ ألوان المظهر الحالي من CSS variables
   if (state.chart) state.chart.destroy();
+  const css = getComputedStyle(document.documentElement);
+  const cText = css.getPropertyValue('--text').trim() || '#e8ecf5';
+  const cMuted = css.getPropertyValue('--text-muted').trim() || '#8a93b0';
+  const cGrid = css.getPropertyValue('--border-soft').trim() || '#232944';
+  const cPrim = css.getPropertyValue('--primary').trim() || '#5b8def';
+  const cPrimDeep = css.getPropertyValue('--primary-deep').trim() || '#3e6dd1';
+
   const ctx = document.getElementById('results-chart').getContext('2d');
   state.chart = new Chart(ctx, {
     type: 'bar',
@@ -414,17 +489,17 @@ async function showSummary(runId) {
       datasets: [{
         label: 'دقة %',
         data: data.models.map(m => (m.accuracy * 100).toFixed(1)),
-        backgroundColor: '#5b8def',
-        borderColor: '#3e6dd1',
+        backgroundColor: cPrim,
+        borderColor: cPrimDeep,
         borderWidth: 1,
       }],
     },
     options: {
       responsive: true,
-      plugins: { legend: { labels: { color: '#e8ecf5' } } },
+      plugins: { legend: { labels: { color: cText } } },
       scales: {
-        y: { beginAtZero: true, max: 100, ticks: { color: '#8a93b0' }, grid: { color: '#232944' } },
-        x: { ticks: { color: '#8a93b0' }, grid: { color: '#232944' } },
+        y: { beginAtZero: true, max: 100, ticks: { color: cMuted }, grid: { color: cGrid } },
+        x: { ticks: { color: cMuted }, grid: { color: cGrid } },
       },
     },
   });
@@ -459,6 +534,20 @@ document.getElementById('view-details-btn').addEventListener('click', async () =
 document.getElementById('modal-close').addEventListener('click', () => {
   document.getElementById('details-modal').classList.add('hidden');
 });
+
+// ============ Export ============
+function exportRun(fmt) {
+  if (!state.currentRunId) {
+    alert('لا يوجد Run محدّد للتصدير');
+    return;
+  }
+  const url = `${API}/api/runs/${state.currentRunId}/export?format=${fmt}`;
+  // تنزيل مباشر — السيرفر يضع Content-Disposition
+  window.location.href = url;
+}
+
+document.getElementById('export-json-btn').addEventListener('click', () => exportRun('json'));
+document.getElementById('export-csv-btn').addEventListener('click', () => exportRun('csv'));
 
 function escapeHtml(s) {
   return (s || '').replace(/[&<>"']/g, c => ({
