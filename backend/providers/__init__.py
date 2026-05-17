@@ -3,15 +3,23 @@ from __future__ import annotations
 
 from backend.providers.base import BaseProvider, ModelResponse
 from backend.providers.claude import ClaudeProvider
+from backend.providers.cohere import CohereProvider
 from backend.providers.gemini import GeminiProvider
+from backend.providers.groq import GroqProvider
+from backend.providers.mistral import MistralProvider
 from backend.providers.ollama import OllamaProvider
 from backend.providers.openai import OpenAIProvider
 from backend.providers.openrouter import OpenRouterProvider
+from backend.providers.xai import XAIProvider
 
 PROVIDERS: dict[str, type[BaseProvider]] = {
     "anthropic": ClaudeProvider,
     "openai": OpenAIProvider,
     "gemini": GeminiProvider,
+    "groq": GroqProvider,
+    "mistral": MistralProvider,
+    "cohere": CohereProvider,
+    "xai": XAIProvider,
     "ollama": OllamaProvider,
     "openrouter": OpenRouterProvider,
 }

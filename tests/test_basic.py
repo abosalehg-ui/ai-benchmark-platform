@@ -13,13 +13,59 @@ def test_providers_import():
     """تأكّد من أن كل المزودين يستوردون بنجاح."""
     from backend.providers import PROVIDERS, make_provider
 
-    expected = {"anthropic", "openai", "gemini", "ollama", "openrouter"}
+    expected = {
+        "anthropic", "openai", "gemini", "ollama", "openrouter",
+        "groq", "mistral", "cohere", "xai",
+    }
     assert set(PROVIDERS.keys()) == expected, f"المزودون المتوقعون: {expected}"
 
     # تجربة إنشاء واحد من كل نوع
     for name in PROVIDERS:
         p = make_provider(name, api_key="dummy")
         assert p.name == name
+
+
+def test_new_providers_have_models_and_pricing():
+    """كل المزودين الجدد لهم نماذج وأسعار معروفة."""
+    from backend.pricing import get_price
+    from backend.providers import PROVIDERS
+
+    for name in ("groq", "mistral", "cohere", "xai"):
+        cls = PROVIDERS[name]
+        assert cls.available_models, f"{name} بدون نماذج"
+        # كل نموذج له سعر
+        for model in cls.available_models:
+            price = get_price(name, model)
+            assert price is not None, f"{name}/{model} بدون تسعير"
+            assert price["input"] >= 0 and price["output"] >= 0
+
+
+def test_estimate_tokens_from_text():
+    """دالة تقدير التوكنات تعطي نتائج معقولة."""
+    from backend.providers.base import estimate_tokens_from_text
+
+    assert estimate_tokens_from_text("") == 0
+    assert estimate_tokens_from_text("a") >= 1
+    # نص عربي مكوّن من 30 حرفاً → ~10 توكن
+    arabic = "هذا نص تجريبي يحتوي على عدّة كلمات."
+    assert estimate_tokens_from_text(arabic) >= 5
+
+
+def test_estimate_endpoint_logic():
+    """منطق تقدير التكلفة يحسب بشكل صحيح."""
+    from backend.benchmarks import make_benchmark
+    from backend.pricing import get_price
+    from backend.providers.base import estimate_tokens_from_text
+
+    b = make_benchmark("saudi_legal")
+    problems = b.load()[:3]
+    sys_t = estimate_tokens_from_text(b.system_prompt or "")
+    total = sum(estimate_tokens_from_text(b.build_prompt(p)) + sys_t for p in problems)
+    assert total > 0
+
+    price = get_price("anthropic", "claude-opus-4-7")
+    cost = (total / 1_000_000) * price["input"] + (600 / 1_000_000) * price["output"]
+    assert cost > 0
 
 
 def test_benchmarks_load():
@@ -321,6 +367,9 @@ if __name__ == "__main__":
     # تشغيل سريع بدون pytest
     tests = [
         test_providers_import,
+        test_new_providers_have_models_and_pricing,
+        test_estimate_tokens_from_text,
+        test_estimate_endpoint_logic,
         test_benchmarks_load,
         test_saudi_legal_has_100_questions,
         test_saudi_legal_filters,

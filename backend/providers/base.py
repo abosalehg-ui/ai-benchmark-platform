@@ -58,6 +58,17 @@ class BaseProvider(ABC):
         ) * price["output"]
 
 
+def estimate_tokens_from_text(text: str) -> int:
+    """تقدير تقريبي لعدد التوكنات من النص.
+
+    قاعدة عامة: ~3.5 حرف/توكن للإنجليزية، ~2 حرف/توكن للعربية.
+    نستخدم 3 كمعدّل وسط محافظ.
+    """
+    if not text:
+        return 0
+    return max(1, len(text) // 3)
+
+
 def measure_latency():
     """Context manager لقياس زمن الاستجابة."""
     return _LatencyTimer()

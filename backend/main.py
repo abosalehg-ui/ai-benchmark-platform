@@ -107,6 +107,73 @@ def get_difficulties(benchmark_id: str):
     return {"difficulties": get_benchmark_difficulties(benchmark_id)}
 
 
+class EstimateRequestBody(BaseModel):
+    benchmark: str
+    n_problems: int = Field(default=10, ge=1, le=200)
+    targets: list[dict]
+    categories: list[str] = Field(default_factory=list)
+    difficulties: list[str] = Field(default_factory=list)
+    avg_output_tokens: int = Field(default=200, ge=1, le=4000)
+
+
+@app.post("/api/estimate")
+def estimate_cost(req: EstimateRequestBody):
+    """تقدير تكلفة التشغيل قبل الانطلاق.
+
+    يحسب متوسط طول الـ prompt من الداتاست الفعلي، ثم يضرب في أسعار كل نموذج.
+    """
+    from backend.benchmarks import make_benchmark
+    from backend.pricing import get_price
+    from backend.providers.base import estimate_tokens_from_text
+    from backend.runner import _filter_problems
+
+    if req.benchmark not in BENCHMARKS:
+        raise HTTPException(404, "بنشمارك غير معروف")
+
+    benchmark = make_benchmark(req.benchmark)
+    problems = _filter_problems(benchmark.load(), req.categories, req.difficulties)
+    problems = problems[: req.n_problems]
+    if not problems:
+        return {"total_usd": 0.0, "per_target": [], "n_problems_effective": 0, "notes": "لا توجد مسائل بعد الفلترة"}
+
+    sys_tokens = estimate_tokens_from_text(benchmark.system_prompt or "")
+    prompt_tokens = [
+        estimate_tokens_from_text(benchmark.build_prompt(p)) + sys_tokens
+        for p in problems
+    ]
+    total_input_tokens = sum(prompt_tokens)
+    total_output_tokens = req.avg_output_tokens * len(problems)
+
+    per_target = []
+    grand_total = 0.0
+    for t in req.targets:
+        provider = t.get("provider", "")
+        model = t.get("model", "")
+        price = get_price(provider, model)
+        cost = 0.0
+        if price:
+            cost = (
+                (total_input_tokens / 1_000_000) * price["input"]
+                + (total_output_tokens / 1_000_000) * price["output"]
+            )
+        per_target.append({
+            "provider": provider,
+            "model": model,
+            "estimated_input_tokens": total_input_tokens,
+            "estimated_output_tokens": total_output_tokens,
+            "estimated_cost_usd": round(cost, 6),
+            "has_price": price is not None,
+        })
+        grand_total += cost
+
+    return {
+        "total_usd": round(grand_total, 6),
+        "per_target": per_target,
+        "n_problems_effective": len(problems),
+        "notes": "تقدير تقريبي مبنياً على طول النص (~3 حرف/توكن). التكلفة الفعلية قد تختلف.",
+    }
+
+
 @app.post("/api/run")
 async def post_run(req: RunRequestBody):
     """تشغيل بنشمارك مع streaming لحظي عبر SSE."""
