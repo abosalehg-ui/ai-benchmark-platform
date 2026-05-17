@@ -1,0 +1,500 @@
+[
+  {
+    "id": "tu_001",
+    "category": "بسيط",
+    "difficulty": "سهل",
+    "scenario": "ما حالة الطقس في الرياض اليوم بالدرجات المئوية؟",
+    "tools": [
+      {
+        "name": "get_weather",
+        "description": "يجلب حالة الطقس الحالية لمدينة معينة",
+        "parameters": {"location": "string (اسم المدينة)", "unit": "celsius | fahrenheit"}
+      },
+      {
+        "name": "search_web",
+        "description": "يبحث على الإنترنت عن أي موضوع",
+        "parameters": {"query": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "get_weather",
+      "arguments": {"location": "Riyadh", "unit": "celsius"},
+      "required_args": ["location", "unit"]
+    }
+  },
+  {
+    "id": "tu_002",
+    "category": "بسيط",
+    "difficulty": "سهل",
+    "scenario": "احسب ناتج 234 ضرب 17",
+    "tools": [
+      {
+        "name": "calculator",
+        "description": "يحسب التعبيرات الرياضية",
+        "parameters": {"expression": "string"}
+      },
+      {
+        "name": "get_weather",
+        "description": "حالة الطقس",
+        "parameters": {"location": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "calculator",
+      "arguments": {"expression": "234 * 17"},
+      "required_args": ["expression"]
+    }
+  },
+  {
+    "id": "tu_003",
+    "category": "بسيط",
+    "difficulty": "سهل",
+    "scenario": "ابحث عن آخر أخبار رؤية 2030",
+    "tools": [
+      {
+        "name": "search_web",
+        "description": "بحث ويب",
+        "parameters": {"query": "string"}
+      },
+      {
+        "name": "get_news",
+        "description": "أحدث الأخبار حول موضوع",
+        "parameters": {"topic": "string", "limit": "integer"}
+      }
+    ],
+    "expected": {
+      "tool": "get_news",
+      "arguments": {"topic": "رؤية 2030", "limit": 5},
+      "required_args": ["topic"]
+    }
+  },
+  {
+    "id": "tu_004",
+    "category": "بسيط",
+    "difficulty": "متوسط",
+    "scenario": "أرسل رسالة لـ ahmed@example.com بعنوان 'اجتماع غداً' ومحتوى 'الاجتماع الساعة 10 صباحاً'",
+    "tools": [
+      {
+        "name": "send_email",
+        "description": "يرسل بريداً إلكترونياً",
+        "parameters": {"to": "string", "subject": "string", "body": "string"}
+      },
+      {
+        "name": "send_sms",
+        "description": "يرسل رسالة نصية",
+        "parameters": {"phone": "string", "message": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "send_email",
+      "arguments": {
+        "to": "ahmed@example.com",
+        "subject": "اجتماع غداً",
+        "body": "الاجتماع الساعة 10 صباحاً"
+      },
+      "required_args": ["to", "subject", "body"]
+    }
+  },
+  {
+    "id": "tu_005",
+    "category": "اختيار من متشابهات",
+    "difficulty": "متوسط",
+    "scenario": "حوّل 100 دولار أمريكي إلى ريال سعودي بالسعر الحالي",
+    "tools": [
+      {
+        "name": "calculator",
+        "description": "تعبير رياضي",
+        "parameters": {"expression": "string"}
+      },
+      {
+        "name": "convert_currency",
+        "description": "تحويل عملة لأخرى بالسعر الحالي",
+        "parameters": {"amount": "number", "from": "string (ISO code)", "to": "string (ISO code)"}
+      },
+      {
+        "name": "get_exchange_rate",
+        "description": "سعر صرف عملتين فقط",
+        "parameters": {"from": "string", "to": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "convert_currency",
+      "arguments": {"amount": 100, "from": "USD", "to": "SAR"},
+      "required_args": ["amount", "from", "to"]
+    }
+  },
+  {
+    "id": "tu_006",
+    "category": "اختيار من متشابهات",
+    "difficulty": "متوسط",
+    "scenario": "أضف موعداً للذهاب إلى الطبيب يوم الأحد القادم الساعة 4 مساءً",
+    "tools": [
+      {
+        "name": "create_event",
+        "description": "ينشئ حدثاً في التقويم",
+        "parameters": {"title": "string", "date": "ISO date string", "time": "HH:MM"}
+      },
+      {
+        "name": "set_reminder",
+        "description": "ينشئ تنبيهاً بدون حدث في التقويم",
+        "parameters": {"text": "string", "at": "datetime"}
+      }
+    ],
+    "expected": {
+      "tool": "create_event",
+      "arguments": {"title": "الذهاب إلى الطبيب", "date": "next sunday", "time": "16:00"},
+      "required_args": ["title", "time"]
+    }
+  },
+  {
+    "id": "tu_007",
+    "category": "معاملات متعددة الأنواع",
+    "difficulty": "متوسط",
+    "scenario": "احجز رحلة من جدة إلى دبي يوم 2026-08-15 لشخص واحد بالدرجة الاقتصادية",
+    "tools": [
+      {
+        "name": "book_flight",
+        "description": "حجز رحلة طيران",
+        "parameters": {
+          "from": "string (city)",
+          "to": "string (city)",
+          "date": "YYYY-MM-DD",
+          "passengers": "integer",
+          "class": "economy | business | first"
+        }
+      }
+    ],
+    "expected": {
+      "tool": "book_flight",
+      "arguments": {
+        "from": "Jeddah",
+        "to": "Dubai",
+        "date": "2026-08-15",
+        "passengers": 1,
+        "class": "economy"
+      },
+      "required_args": ["from", "to", "date", "passengers", "class"]
+    }
+  },
+  {
+    "id": "tu_008",
+    "category": "معاملات اختيارية",
+    "difficulty": "متوسط",
+    "scenario": "ابحث عن مطاعم إيطالية في الرياض",
+    "tools": [
+      {
+        "name": "search_places",
+        "description": "بحث عن أماكن قريبة",
+        "parameters": {
+          "query": "string",
+          "location": "string",
+          "category": "optional string (restaurant | cafe | shop)"
+        }
+      }
+    ],
+    "expected": {
+      "tool": "search_places",
+      "arguments": {"query": "مطاعم إيطالية", "location": "Riyadh", "category": "restaurant"},
+      "required_args": ["query", "location"]
+    }
+  },
+  {
+    "id": "tu_009",
+    "category": "رياضيات بسيطة",
+    "difficulty": "سهل",
+    "scenario": "احسب 15% ضريبة على 850 ريال",
+    "tools": [
+      {
+        "name": "calculator",
+        "description": "تعبير رياضي",
+        "parameters": {"expression": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "calculator",
+      "arguments": {"expression": "850 * 0.15"},
+      "required_args": ["expression"]
+    }
+  },
+  {
+    "id": "tu_010",
+    "category": "اختيار من متشابهات",
+    "difficulty": "صعب",
+    "scenario": "اعرض لي قائمة بأكواد التطبيقات (commits) التي رفعتها اليوم في مستودع abosalehg-ui/ai-benchmark-platform",
+    "tools": [
+      {
+        "name": "github_list_commits",
+        "description": "يستعرض الكوميتات الخاصة بمستودع",
+        "parameters": {"owner": "string", "repo": "string", "since": "ISO datetime"}
+      },
+      {
+        "name": "github_list_prs",
+        "description": "يستعرض الـ pull requests",
+        "parameters": {"owner": "string", "repo": "string"}
+      },
+      {
+        "name": "search_web",
+        "description": "بحث",
+        "parameters": {"query": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "github_list_commits",
+      "arguments": {"owner": "abosalehg-ui", "repo": "ai-benchmark-platform", "since": "today"},
+      "required_args": ["owner", "repo"]
+    }
+  },
+  {
+    "id": "tu_011",
+    "category": "متعدد القيم",
+    "difficulty": "متوسط",
+    "scenario": "اشتر 3 كؤوس قهوة و2 كرواسون من Starbucks وادفع ببطاقة الائتمان",
+    "tools": [
+      {
+        "name": "place_order",
+        "description": "يطلب من متجر",
+        "parameters": {
+          "store": "string",
+          "items": "array of {name, quantity}",
+          "payment_method": "credit_card | cash | wallet"
+        }
+      }
+    ],
+    "expected": {
+      "tool": "place_order",
+      "arguments": {
+        "store": "Starbucks",
+        "items": [
+          {"name": "قهوة", "quantity": 3},
+          {"name": "كرواسون", "quantity": 2}
+        ],
+        "payment_method": "credit_card"
+      },
+      "required_args": ["store", "payment_method"]
+    }
+  },
+  {
+    "id": "tu_012",
+    "category": "بسيط",
+    "difficulty": "سهل",
+    "scenario": "كم الساعة الآن في طوكيو؟",
+    "tools": [
+      {
+        "name": "get_time",
+        "description": "يجلب الوقت الحالي في منطقة زمنية",
+        "parameters": {"timezone": "string (e.g. Asia/Tokyo)"}
+      },
+      {
+        "name": "get_weather",
+        "description": "الطقس",
+        "parameters": {"location": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "get_time",
+      "arguments": {"timezone": "Asia/Tokyo"},
+      "required_args": ["timezone"]
+    }
+  },
+  {
+    "id": "tu_013",
+    "category": "اختيار من متشابهات",
+    "difficulty": "متوسط",
+    "scenario": "ترجم 'السلام عليكم' إلى الإنجليزية",
+    "tools": [
+      {
+        "name": "translate",
+        "description": "ترجمة نص بين لغتين",
+        "parameters": {"text": "string", "source_lang": "string", "target_lang": "string"}
+      },
+      {
+        "name": "search_web",
+        "description": "بحث",
+        "parameters": {"query": "string"}
+      },
+      {
+        "name": "dictionary_lookup",
+        "description": "معنى كلمة في القاموس",
+        "parameters": {"word": "string", "lang": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "translate",
+      "arguments": {"text": "السلام عليكم", "source_lang": "ar", "target_lang": "en"},
+      "required_args": ["text", "target_lang"]
+    }
+  },
+  {
+    "id": "tu_014",
+    "category": "بسيط",
+    "difficulty": "سهل",
+    "scenario": "افتح ملف /home/user/notes.txt واقرأ محتواه",
+    "tools": [
+      {
+        "name": "read_file",
+        "description": "يقرأ ملفاً نصياً",
+        "parameters": {"path": "absolute path"}
+      },
+      {
+        "name": "write_file",
+        "description": "يكتب لملف",
+        "parameters": {"path": "string", "content": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "read_file",
+      "arguments": {"path": "/home/user/notes.txt"},
+      "required_args": ["path"]
+    }
+  },
+  {
+    "id": "tu_015",
+    "category": "متعدد القيم",
+    "difficulty": "صعب",
+    "scenario": "حدد لي اجتماعاً مع فريقي بعنوان 'مراجعة ربع سنوية' الأربعاء القادم من 14:00 إلى 16:00 وأرسل دعوات لـ omar@x.com و sara@x.com و khalid@x.com",
+    "tools": [
+      {
+        "name": "schedule_meeting",
+        "description": "ينشئ اجتماعاً مع دعوات",
+        "parameters": {
+          "title": "string",
+          "date": "string",
+          "start_time": "HH:MM",
+          "end_time": "HH:MM",
+          "attendees": "array of emails"
+        }
+      }
+    ],
+    "expected": {
+      "tool": "schedule_meeting",
+      "arguments": {
+        "title": "مراجعة ربع سنوية",
+        "date": "next wednesday",
+        "start_time": "14:00",
+        "end_time": "16:00",
+        "attendees": ["omar@x.com", "sara@x.com", "khalid@x.com"]
+      },
+      "required_args": ["title", "start_time", "end_time"]
+    }
+  },
+  {
+    "id": "tu_016",
+    "category": "اختيار من متشابهات",
+    "difficulty": "متوسط",
+    "scenario": "اعطني تفاصيل المستخدم بمعرّف 12345",
+    "tools": [
+      {
+        "name": "get_user",
+        "description": "يجلب معلومات مستخدم بـ id",
+        "parameters": {"user_id": "string or integer"}
+      },
+      {
+        "name": "search_users",
+        "description": "يبحث عن مستخدمين بكلمات مفتاحية",
+        "parameters": {"query": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "get_user",
+      "arguments": {"user_id": "12345"},
+      "required_args": ["user_id"]
+    }
+  },
+  {
+    "id": "tu_017",
+    "category": "اختيار من متشابهات",
+    "difficulty": "متوسط",
+    "scenario": "ألغِ آخر حجز فندق قمت به",
+    "tools": [
+      {
+        "name": "list_bookings",
+        "description": "قائمة حجوزاتي",
+        "parameters": {"type": "hotel | flight | car"}
+      },
+      {
+        "name": "cancel_booking",
+        "description": "يلغي حجزاً",
+        "parameters": {"booking_id": "string"}
+      },
+      {
+        "name": "cancel_latest_booking",
+        "description": "يلغي آخر حجز من نوع معين بدون معرفة الـ id",
+        "parameters": {"type": "hotel | flight | car"}
+      }
+    ],
+    "expected": {
+      "tool": "cancel_latest_booking",
+      "arguments": {"type": "hotel"},
+      "required_args": ["type"]
+    }
+  },
+  {
+    "id": "tu_018",
+    "category": "بسيط",
+    "difficulty": "سهل",
+    "scenario": "افتح الرابط https://example.com في المتصفح",
+    "tools": [
+      {
+        "name": "open_url",
+        "description": "يفتح رابطاً في المتصفح",
+        "parameters": {"url": "string"}
+      },
+      {
+        "name": "search_web",
+        "description": "بحث",
+        "parameters": {"query": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "open_url",
+      "arguments": {"url": "https://example.com"},
+      "required_args": ["url"]
+    }
+  },
+  {
+    "id": "tu_019",
+    "category": "بسيط",
+    "difficulty": "سهل",
+    "scenario": "شغّل أغنية 'Bohemian Rhapsody' لفرقة Queen",
+    "tools": [
+      {
+        "name": "play_music",
+        "description": "يشغّل أغنية على المشغّل",
+        "parameters": {"song": "string", "artist": "string"}
+      }
+    ],
+    "expected": {
+      "tool": "play_music",
+      "arguments": {"song": "Bohemian Rhapsody", "artist": "Queen"},
+      "required_args": ["song"]
+    }
+  },
+  {
+    "id": "tu_020",
+    "category": "صعب - تمييز دقيق",
+    "difficulty": "صعب",
+    "scenario": "خفّض السطوع إلى 30%",
+    "tools": [
+      {
+        "name": "set_brightness",
+        "description": "ضبط السطوع بنسبة 0-100",
+        "parameters": {"level": "integer 0-100"}
+      },
+      {
+        "name": "set_volume",
+        "description": "ضبط الصوت",
+        "parameters": {"level": "integer 0-100"}
+      },
+      {
+        "name": "toggle_dark_mode",
+        "description": "تفعيل/تعطيل المظهر الداكن",
+        "parameters": {"enabled": "boolean"}
+      }
+    ],
+    "expected": {
+      "tool": "set_brightness",
+      "arguments": {"level": 30},
+      "required_args": ["level"]
+    }
+  }
+]

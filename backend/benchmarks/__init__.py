@@ -7,7 +7,9 @@ from backend.benchmarks.gsm8k import GSM8KBenchmark
 from backend.benchmarks.humaneval import HumanEvalBenchmark
 from backend.benchmarks.llm_judge import LLMJudgeBenchmark
 from backend.benchmarks.mmlu import MMLUBenchmark
+from backend.benchmarks.saudi_dialects import SaudiDialectsBenchmark
 from backend.benchmarks.saudi_legal import SaudiLegalBenchmark
+from backend.benchmarks.tool_use import ToolUseBenchmark
 
 BENCHMARKS: dict[str, type[BaseBenchmark]] = {
     "humaneval": HumanEvalBenchmark,
@@ -15,6 +17,8 @@ BENCHMARKS: dict[str, type[BaseBenchmark]] = {
     "mmlu": MMLUBenchmark,
     "arabic_mmlu": ArabicMMLUBenchmark,
     "saudi_legal": SaudiLegalBenchmark,
+    "saudi_dialects": SaudiDialectsBenchmark,
+    "tool_use": ToolUseBenchmark,
     "llm_judge": LLMJudgeBenchmark,
 }
 
