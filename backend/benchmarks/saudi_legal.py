@@ -36,6 +36,7 @@ class SaudiLegalBenchmark(BaseBenchmark):
             metadata={
                 "choices": raw["choices"],
                 "category": raw.get("category", "general"),
+                "difficulty": raw.get("difficulty", "متوسط"),
                 "explanation": raw.get("explanation", ""),
                 "source": raw.get("source", ""),
             },
@@ -46,8 +47,12 @@ class SaudiLegalBenchmark(BaseBenchmark):
         letters = ["أ", "ب", "ج", "د"]
         formatted = "\n".join(f"{l}. {c}" for l, c in zip(letters, choices))
         category = problem.metadata.get("category", "")
+        difficulty = problem.metadata.get("difficulty", "")
+        header = f"التصنيف: {category}"
+        if difficulty:
+            header += f" • الصعوبة: {difficulty}"
         return (
-            f"التصنيف: {category}\n\n"
+            f"{header}\n\n"
             f"السؤال: {problem.prompt}\n\n"
             f"الخيارات:\n{formatted}\n\n"
             f"اختر الإجابة الصحيحة وأجب بصيغة: الإجابة: <حرف>"

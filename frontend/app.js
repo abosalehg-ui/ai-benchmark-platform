@@ -10,6 +10,7 @@ const state = {
   providers: [],
   selectedBenchmark: null,
   selectedCategories: new Set(),
+  selectedDifficulties: new Set(),
   models: [], // [{provider, model}]
   ollamaModels: [],
   ollamaError: null,
@@ -88,39 +89,46 @@ function renderBenchmarks() {
     card.className = 'bench-card';
     card.dataset.id = b.id;
     const catCount = (b.categories || []).length;
-    const catNote = catCount ? `<small class="muted">${catCount} تصنيف</small>` : '';
-    card.innerHTML = `<h4>${b.name}</h4><p>${b.description}</p>${catNote}`;
+    const diffCount = (b.difficulties || []).length;
+    const meta = [
+      `${b.problems_count} سؤال`,
+      catCount ? `${catCount} تصنيف` : null,
+      diffCount ? `${diffCount} مستوى صعوبة` : null,
+    ].filter(Boolean).join(' • ');
+    card.innerHTML = `<h4>${b.name}</h4><p>${b.description}</p><small class="muted">${meta}</small>`;
     card.addEventListener('click', () => {
       state.selectedBenchmark = b.id;
       state.selectedCategories = new Set();
+      state.selectedDifficulties = new Set();
       document.querySelectorAll('.bench-card').forEach(x => x.classList.remove('selected'));
       card.classList.add('selected');
-      renderCategories(b.categories || []);
+      renderChips('categories', b.categories || [], state.selectedCategories);
+      renderChips('difficulties', b.difficulties || [], state.selectedDifficulties);
       updateCostEstimate();
     });
     c.appendChild(card);
   });
 }
 
-function renderCategories(categories) {
-  const wrap = document.getElementById('categories-wrap');
-  const list = document.getElementById('categories-list');
+function renderChips(kind, values, selectedSet) {
+  const wrap = document.getElementById(`${kind}-wrap`);
+  const list = document.getElementById(`${kind}-list`);
   list.innerHTML = '';
-  if (!categories.length) {
+  if (!values.length) {
     wrap.classList.add('hidden');
     return;
   }
   wrap.classList.remove('hidden');
-  categories.forEach(cat => {
+  values.forEach(v => {
     const chip = document.createElement('span');
     chip.className = 'cat-chip';
-    chip.textContent = cat;
+    chip.textContent = v;
     chip.addEventListener('click', () => {
-      if (state.selectedCategories.has(cat)) {
-        state.selectedCategories.delete(cat);
+      if (selectedSet.has(v)) {
+        selectedSet.delete(v);
         chip.classList.remove('active');
       } else {
-        state.selectedCategories.add(cat);
+        selectedSet.add(v);
         chip.classList.add('active');
       }
     });
@@ -295,6 +303,7 @@ async function runBenchmark() {
   const budgetUsd = Number.isFinite(budgetVal) && budgetVal > 0 ? budgetVal : null;
   const enforceSafety = (localStorage.getItem('enforce_safety') ?? 'true') === 'true';
   const categories = Array.from(state.selectedCategories);
+  const difficulties = Array.from(state.selectedDifficulties);
 
   const targets = validModels.map(m => ({
     provider: m.provider,
@@ -344,6 +353,7 @@ async function runBenchmark() {
         use_cache: useCache,
         budget_usd: budgetUsd,
         categories,
+        difficulties,
         enforce_safety: enforceSafety,
       }),
     });

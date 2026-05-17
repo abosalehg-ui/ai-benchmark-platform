@@ -36,17 +36,72 @@ def test_benchmarks_load():
         assert p.prompt
 
 
-def test_saudi_legal_has_30_questions():
-    """البنشمارك السعودي المخصص يحتوي 30 سؤالاً على الأقل."""
+def test_saudi_legal_has_100_questions():
+    """البنشمارك السعودي المخصص يحتوي 100 سؤال على الأقل."""
     from backend.benchmarks import make_benchmark
 
     b = make_benchmark("saudi_legal")
     problems = b.load()
-    assert len(problems) >= 30, f"المتوقّع 30+ سؤال، الفعلي: {len(problems)}"
+    assert len(problems) >= 100, f"المتوقّع 100+ سؤال، الفعلي: {len(problems)}"
 
     # تأكّد من وجود تصنيفات متنوعة
     categories = {p.metadata.get("category") for p in problems}
-    assert len(categories) >= 5, f"المتوقع 5+ تصنيفات، الفعلي: {len(categories)}"
+    assert len(categories) >= 10, f"المتوقع 10+ تصنيفات، الفعلي: {len(categories)}"
+
+    # تأكّد من وجود مستويات صعوبة
+    difficulties = {p.metadata.get("difficulty") for p in problems}
+    assert {"سهل", "متوسط", "صعب"}.issubset(difficulties), (
+        f"يجب وجود المستويات الثلاثة، الفعلي: {difficulties}"
+    )
+
+    # كل سؤال له مصدر
+    no_source = [p.id for p in problems if not p.metadata.get("source")]
+    assert not no_source, f"أسئلة بدون مصدر: {no_source}"
+
+    # كل سؤال له 4 خيارات
+    bad_choices = [p.id for p in problems if len(p.metadata.get("choices", [])) != 4]
+    assert not bad_choices, f"أسئلة بعدد خيارات غير 4: {bad_choices}"
+
+    # IDs فريدة
+    ids = [p.id for p in problems]
+    assert len(ids) == len(set(ids)), "توجد IDs مكررة"
+
+
+def test_saudi_legal_filters():
+    """فلتر التصنيف والصعوبة في الـ runner يعمل بشكل صحيح."""
+    from backend.benchmarks import make_benchmark
+    from backend.runner import _filter_problems
+
+    b = make_benchmark("saudi_legal")
+    problems = b.load()
+
+    # فلتر بتصنيف موجود
+    filtered = _filter_problems(problems, ["نظام العمل"], [])
+    assert filtered, "يجب إيجاد أسئلة في نظام العمل"
+    assert all(p.metadata["category"] == "نظام العمل" for p in filtered)
+
+    # فلتر بصعوبة "سهل"
+    easy = _filter_problems(problems, [], ["سهل"])
+    assert easy, "يجب إيجاد أسئلة سهلة"
+    assert all(p.metadata["difficulty"] == "سهل" for p in easy)
+
+    # فلتر مركّب: نظام العمل + متوسط
+    combo = _filter_problems(problems, ["نظام العمل"], ["متوسط"])
+    assert all(
+        p.metadata["category"] == "نظام العمل" and p.metadata["difficulty"] == "متوسط"
+        for p in combo
+    )
+
+    # فلتر فاضي = كل الأسئلة
+    assert _filter_problems(problems, [], []) == problems
+
+
+def test_get_benchmark_difficulties():
+    """endpoint مستويات الصعوبة يرتّب المستويات بشكل مفهوم."""
+    from backend.benchmarks import get_benchmark_difficulties
+
+    diffs = get_benchmark_difficulties("saudi_legal")
+    assert diffs == ["سهل", "متوسط", "صعب"]
 
 
 def test_sandbox_runs_simple_code():
@@ -209,7 +264,9 @@ if __name__ == "__main__":
     tests = [
         test_providers_import,
         test_benchmarks_load,
-        test_saudi_legal_has_30_questions,
+        test_saudi_legal_has_100_questions,
+        test_saudi_legal_filters,
+        test_get_benchmark_difficulties,
         test_sandbox_runs_simple_code,
         test_sandbox_blocks_dangerous_code,
         test_sandbox_timeout,

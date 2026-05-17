@@ -11,7 +11,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend import db
-from backend.benchmarks import BENCHMARKS, list_benchmarks, get_benchmark_categories
+from backend.benchmarks import (
+    BENCHMARKS,
+    get_benchmark_categories,
+    get_benchmark_difficulties,
+    list_benchmarks,
+)
 from backend.providers import PROVIDERS
 from backend.providers.ollama import OllamaProvider
 from backend.runner import ModelTarget, RunRequest, event_to_sse, run_benchmark
@@ -76,12 +81,13 @@ async def get_ollama_models(base_url: str = "http://localhost:11434"):
 
 class RunRequestBody(BaseModel):
     benchmark: str
-    n_problems: int = Field(default=10, ge=1, le=100)
+    n_problems: int = Field(default=10, ge=1, le=200)
     targets: list[dict]
     judge: dict | None = None
     use_cache: bool = True
     budget_usd: float | None = Field(default=None, ge=0)
     categories: list[str] = Field(default_factory=list)
+    difficulties: list[str] = Field(default_factory=list)
     enforce_safety: bool = True
 
 
@@ -91,6 +97,14 @@ def get_categories(benchmark_id: str):
     if benchmark_id not in BENCHMARKS:
         raise HTTPException(404, "بنشمارك غير معروف")
     return {"categories": get_benchmark_categories(benchmark_id)}
+
+
+@app.get("/api/benchmarks/{benchmark_id}/difficulties")
+def get_difficulties(benchmark_id: str):
+    """قائمة مستويات الصعوبة المتاحة في البنشمارك."""
+    if benchmark_id not in BENCHMARKS:
+        raise HTTPException(404, "بنشمارك غير معروف")
+    return {"difficulties": get_benchmark_difficulties(benchmark_id)}
 
 
 @app.post("/api/run")
@@ -127,6 +141,7 @@ async def post_run(req: RunRequestBody):
         use_cache=req.use_cache,
         budget_usd=req.budget_usd,
         categories=req.categories,
+        difficulties=req.difficulties,
         enforce_safety=req.enforce_safety,
     )
 
