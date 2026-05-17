@@ -253,6 +253,58 @@ def test_mmlu_extract_letter():
     assert MMLUBenchmark.extract_letter("I think C is correct") == "C"
 
 
+def test_tool_use_benchmark_loads_and_evaluates():
+    """بنشمارك Tool Use يحمّل ويستخرج JSON ويقيّم بشكل صحيح."""
+    import asyncio
+    from backend.benchmarks import make_benchmark
+    from backend.providers.base import ModelResponse
+
+    b = make_benchmark("tool_use")
+    problems = b.load()
+    assert len(problems) >= 15
+
+    # كل سؤال له tools + expected
+    for p in problems:
+        assert "tools" in p.metadata and len(p.metadata["tools"]) >= 1
+        assert "tool" in p.reference and "arguments" in p.reference
+
+    # اختبر دالة الاستخراج
+    from backend.benchmarks.tool_use import ToolUseBenchmark
+    assert ToolUseBenchmark.extract_json('{"tool": "x", "arguments": {}}') == {"tool": "x", "arguments": {}}
+    assert ToolUseBenchmark.extract_json('قبل\n```json\n{"tool": "y", "arguments": {"a": 1}}\n```\nبعد') == {"tool": "y", "arguments": {"a": 1}}
+    assert ToolUseBenchmark.extract_json("لا يوجد JSON") is None
+
+    # اختبر التقييم على مثال
+    p = problems[0]
+    expected_json = f'{{"tool": "{p.reference["tool"]}", "arguments": {__import__("json").dumps(p.reference["arguments"], ensure_ascii=False)}}}'
+    resp = ModelResponse(text=expected_json)
+    score = asyncio.run(b.evaluate(p, resp))
+    assert score.correct, f"التقييم فشل: {score.judgment}"
+
+    # رد خاطئ
+    resp2 = ModelResponse(text='{"tool": "wrong_tool", "arguments": {}}')
+    score2 = asyncio.run(b.evaluate(p, resp2))
+    assert not score2.correct
+
+
+def test_saudi_dialects_benchmark_loads():
+    """بنشمارك اللهجات السعودية يحمّل بشكل صحيح."""
+    from backend.benchmarks import make_benchmark
+
+    b = make_benchmark("saudi_dialects")
+    problems = b.load()
+    assert len(problems) >= 20
+    # تنوّع اللهجات
+    dialects = {p.metadata.get("dialect") for p in problems}
+    assert "نجدية" in dialects
+    assert "حجازية" in dialects
+    # كل سؤال له 4 خيارات + إجابة + شرح
+    for p in problems:
+        assert len(p.metadata["choices"]) == 4
+        assert p.reference in "أبجد"
+        assert p.metadata.get("explanation")
+
+
 def test_arabic_mmlu_extract_letter():
     """استخراج الحرف العربي من رد ArabicMMLU."""
     from backend.benchmarks.arabic_mmlu import ArabicMMLUBenchmark
