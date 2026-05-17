@@ -30,6 +30,7 @@ class RunRequest:
     use_cache: bool = True
     budget_usd: float | None = None  # لو تجاوزت التشغيل يتوقف
     categories: list[str] = field(default_factory=list)  # فلتر للبنشماركات المصنّفة
+    difficulties: list[str] = field(default_factory=list)  # فلتر لمستوى الصعوبة
 
 
 @dataclass
@@ -39,11 +40,15 @@ class ProgressEvent:
     payload: dict
 
 
-def _filter_problems(problems, categories: list[str]):
-    if not categories:
-        return problems
-    wanted = set(categories)
-    return [p for p in problems if p.metadata.get("category") in wanted]
+def _filter_problems(problems, categories: list[str], difficulties: list[str]):
+    out = problems
+    if categories:
+        wanted_c = set(categories)
+        out = [p for p in out if p.metadata.get("category") in wanted_c]
+    if difficulties:
+        wanted_d = set(difficulties)
+        out = [p for p in out if p.metadata.get("difficulty") in wanted_d]
+    return out
 
 
 async def _complete_with_cache(provider, target: ModelTarget, prompt: str, system: str | None,
@@ -80,7 +85,7 @@ async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
     """يشغّل البنشمارك ويُنتج أحداث تقدّم لحظية (async generator)."""
     benchmark = make_benchmark(req.benchmark)
     all_problems = benchmark.load()
-    filtered = _filter_problems(all_problems, req.categories)
+    filtered = _filter_problems(all_problems, req.categories, req.difficulties)
     problems = filtered[: req.n_problems]
     n = len(problems)
 
@@ -95,6 +100,7 @@ async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
         "use_cache": req.use_cache,
         "budget_usd": req.budget_usd,
         "categories": req.categories,
+        "difficulties": req.difficulties,
     }
     run_id = db.create_run(req.benchmark, n, config)
 
