@@ -237,19 +237,55 @@ function renderModels() {
 document.getElementById('add-model-btn').addEventListener('click', addModelRow);
 
 // ============ Cost Estimate ============
+let estimateTimer = null;
 function updateCostEstimate() {
   const n = parseInt(document.getElementById('n-problems').value || '5', 10);
   const validModels = state.models.filter(m => m.provider && m.model);
   const calls = n * validModels.length;
-  document.getElementById('cost-value').textContent =
-    validModels.length === 0 ? '—' : `${calls} استدعاء (تقريباً)`;
+  const out = document.getElementById('cost-value');
+  if (validModels.length === 0 || !state.selectedBenchmark) {
+    out.textContent = '—';
+    return;
+  }
+  out.textContent = `${calls} استدعاء — جارٍ التقدير...`;
+
+  // debounce: انتظر 400ms قبل استدعاء التقدير الفعلي
+  if (estimateTimer) clearTimeout(estimateTimer);
+  estimateTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(API + '/api/estimate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          benchmark: state.selectedBenchmark,
+          n_problems: n,
+          targets: validModels.map(m => ({ provider: m.provider, model: m.model })),
+          categories: Array.from(state.selectedCategories || []),
+          difficulties: Array.from(state.selectedDifficulties || []),
+        }),
+      });
+      if (!r.ok) {
+        out.textContent = `${calls} استدعاء`;
+        return;
+      }
+      const data = await r.json();
+      const cost = (data.total_usd || 0).toFixed(4);
+      const noPriceModels = data.per_target.filter(t => !t.has_price);
+      const note = noPriceModels.length
+        ? ` (${noPriceModels.length} نموذج بدون تسعير معروف)`
+        : '';
+      out.textContent = `${calls} استدعاء — تقريباً $${cost}${note}`;
+    } catch {
+      out.textContent = `${calls} استدعاء`;
+    }
+  }, 400);
 }
 
 document.getElementById('n-problems').addEventListener('input', updateCostEstimate);
 
 // ============ Keys ============
 function loadKeys() {
-  ['anthropic', 'openai', 'gemini', 'openrouter'].forEach(p => {
+  ['anthropic', 'openai', 'gemini', 'openrouter', 'groq', 'mistral', 'cohere', 'xai'].forEach(p => {
     const v = localStorage.getItem('key_' + p);
     if (v) document.getElementById('key-' + p).value = v;
   });
@@ -260,7 +296,7 @@ function loadKeys() {
 }
 
 document.getElementById('save-keys-btn').addEventListener('click', () => {
-  ['anthropic', 'openai', 'gemini', 'openrouter'].forEach(p => {
+  ['anthropic', 'openai', 'gemini', 'openrouter', 'groq', 'mistral', 'cohere', 'xai'].forEach(p => {
     const v = document.getElementById('key-' + p).value.trim();
     if (v) localStorage.setItem('key_' + p, v);
     else localStorage.removeItem('key_' + p);

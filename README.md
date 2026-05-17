@@ -56,8 +56,12 @@
 | المزوّد | النماذج | ملاحظة |
 |---------|---------|---------|
 | Anthropic | Claude Opus / Sonnet / Haiku | — |
-| OpenAI | GPT-4o, GPT-4, GPT-3.5 | — |
+| OpenAI | GPT-4o, GPT-4, o1 | — |
 | Google | Gemini 1.5 / 2.0 | — |
+| **Groq** ⭐ | Llama 3.3 70B، Mixtral، Gemma 2، DeepSeek-R1-Distill | استنتاج فائق السرعة |
+| **Mistral** ⭐ | Mistral Large/Small، Codestral، Nemo، Ministral | API مباشر |
+| **Cohere** ⭐ | Command R+ / R / R7B | متعدد اللغات قوي |
+| **xAI** ⭐ | Grok 2 / Grok 2 Mini | — |
 | Ollama | أي نموذج محلي | مجاني |
 | OpenRouter | DeepSeek, Mistral, Qwen, Llama | بوابة موحّدة |
 
@@ -300,8 +304,9 @@ class MyBenchmark(BaseBenchmark):
 - [x] Head-to-Head matrix للمقارنة الزوجية
 - [x] Diff view (مقارنة جنباً إلى جنب للإجابات على نفس السؤال)
 - [x] Responsive للجوال
+- [x] دعم Groq، Mistral، Cohere، xAI
+- [x] تقدير التكلفة قبل التشغيل (POST /api/estimate)
 - [ ] توسيع البنشمارك السعودي إلى 200+ سؤال
-- [ ] دعم Cohere و Groq
 - [ ] Docker Compose للنشر الذاتي + Sandbox آمن (Docker / Pyodide)
 - [ ] تصدير النتائج كـ PDF
 - [ ] دمج RAG في التقييم
