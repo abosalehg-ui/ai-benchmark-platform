@@ -231,6 +231,64 @@ def test_run_request_accepts_new_options():
     assert req.categories == ["نظام العمل"]
 
 
+def test_head_to_head_matrix():
+    """مصفوفة المقارنة الزوجية تحسب بشكل صحيح."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        import backend.db as db
+        db.DB_PATH = Path(tmp) / "test.db"
+        db.init_db()
+
+        run_id = db.create_run("saudi_legal", 3, {})
+        # نموذج A: صحيح في p1 و p2، خطأ في p3
+        # نموذج B: صحيح في p1 فقط
+        for pid, a_correct, b_correct in [("p1", True, True), ("p2", True, False), ("p3", False, False)]:
+            db.insert_result(run_id, "anthropic", "claude-x", pid,
+                             correct=a_correct, raw_score=1.0 if a_correct else 0.0,
+                             latency_ms=10, input_tokens=1, output_tokens=1, cost_usd=0,
+                             response_text="", judgment="", error=None)
+            db.insert_result(run_id, "openai", "gpt-x", pid,
+                             correct=b_correct, raw_score=1.0 if b_correct else 0.0,
+                             latency_ms=10, input_tokens=1, output_tokens=1, cost_usd=0,
+                             response_text="", judgment="", error=None)
+        db.finish_run(run_id)
+
+        h2h = db.head_to_head(run_id)
+        assert h2h is not None
+        assert len(h2h["models"]) == 2
+        models = h2h["models"]
+        # نحدد فهرس كل نموذج
+        idx = {(m["provider"], m["model"]): i for i, m in enumerate(models)}
+        i_a = idx[("anthropic", "claude-x")]
+        i_b = idx[("openai", "gpt-x")]
+
+        # خلية A ضد B: both=1 (p1)، a_only=1 (p2)، b_only=0، both_wrong=1 (p3)
+        cell = h2h["matrix"][i_a][i_b]
+        assert cell["both_correct"] == 1
+        assert cell["a_only"] == 1
+        assert cell["b_only"] == 0
+        assert cell["both_wrong"] == 1
+        assert cell["n_compared"] == 3
+
+        # القطر: نفس النموذج، a_only = b_only = 0
+        diag = h2h["matrix"][i_a][i_a]
+        assert diag["a_only"] == 0 and diag["b_only"] == 0
+
+
+def test_head_to_head_returns_none_for_missing_run():
+    """h2h يرجع None لـ run غير موجود."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        import backend.db as db
+        db.DB_PATH = Path(tmp) / "test.db"
+        db.init_db()
+        assert db.head_to_head("nonexistent") is None
+
+
 def test_db_lifecycle():
     """اختبار دورة حياة run كامل."""
     import tempfile
@@ -273,6 +331,8 @@ if __name__ == "__main__":
         test_gsm8k_extract_answer,
         test_mmlu_extract_letter,
         test_arabic_mmlu_extract_letter,
+        test_head_to_head_matrix,
+        test_head_to_head_returns_none_for_missing_run,
         test_db_lifecycle,
     ]
     passed, failed = 0, 0
