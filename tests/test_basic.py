@@ -83,22 +83,25 @@ def test_benchmarks_load():
 
 
 def test_saudi_legal_has_100_questions():
-    """البنشمارك السعودي المخصص يحتوي 100 سؤال على الأقل."""
+    """البنشمارك السعودي المخصص يحتوي 150 سؤال على الأقل."""
     from backend.benchmarks import make_benchmark
 
     b = make_benchmark("saudi_legal")
     problems = b.load()
-    assert len(problems) >= 100, f"المتوقّع 100+ سؤال، الفعلي: {len(problems)}"
+    assert len(problems) >= 150, f"المتوقّع 150+ سؤال، الفعلي: {len(problems)}"
 
-    # تأكّد من وجود تصنيفات متنوعة
-    categories = {p.metadata.get("category") for p in problems}
-    assert len(categories) >= 10, f"المتوقع 10+ تصنيفات، الفعلي: {len(categories)}"
+    # تأكّد من وجود تصنيفات متنوعة + كل تصنيف 10+
+    cats = {}
+    for p in problems:
+        c = p.metadata.get("category")
+        cats[c] = cats.get(c, 0) + 1
+    assert len(cats) >= 13, f"المتوقع 13+ تصنيفات، الفعلي: {len(cats)}"
+    weak = [c for c, n in cats.items() if n < 10]
+    assert not weak, f"تصنيفات أقل من 10 أسئلة: {weak}"
 
     # تأكّد من وجود مستويات صعوبة
     difficulties = {p.metadata.get("difficulty") for p in problems}
-    assert {"سهل", "متوسط", "صعب"}.issubset(difficulties), (
-        f"يجب وجود المستويات الثلاثة، الفعلي: {difficulties}"
-    )
+    assert {"سهل", "متوسط", "صعب"}.issubset(difficulties)
 
     # كل سؤال له مصدر
     no_source = [p.id for p in problems if not p.metadata.get("source")]
