@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
 import time
 import uuid
@@ -11,6 +12,26 @@ from pathlib import Path
 
 DB_PATH = Path(__file__).parent.parent / "data" / "benchmarks.db"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+
+def wilson_interval(successes: int, n: int, z: float = 1.96) -> dict:
+    """ارجع dict فيه center و margin و lower و upper لفاصل ويلسون عند ثقة 95%.
+
+    أنسب من الفاصل التقليدي للعينات الصغيرة (n<30).
+    """
+    if n <= 0:
+        return {"center": 0.0, "margin": 0.0, "lower": 0.0, "upper": 0.0}
+    p = successes / n
+    z2 = z * z
+    denom = 1 + z2 / n
+    center = (p + z2 / (2 * n)) / denom
+    margin = z * math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / denom
+    return {
+        "center": center,
+        "margin": margin,
+        "lower": max(0.0, center - margin),
+        "upper": min(1.0, center + margin),
+    }
 
 
 def init_db() -> None:
@@ -194,7 +215,14 @@ def get_run(run_id: str) -> dict | None:
             GROUP BY provider, model""",
             (run_id,),
         ).fetchall()
-        run["models"] = [dict(r) for r in agg]
+        run["models"] = []
+        for r in agg:
+            d = dict(r)
+            ci = wilson_interval(int(d.get("n_correct") or 0), int(d.get("n") or 0))
+            d["ci_lower"] = ci["lower"]
+            d["ci_upper"] = ci["upper"]
+            d["ci_margin"] = ci["margin"]
+            run["models"].append(d)
         # كل النتائج التفصيلية
         details = conn.execute(
             "SELECT * FROM results WHERE run_id = ? ORDER BY id",

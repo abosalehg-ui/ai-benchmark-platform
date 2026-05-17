@@ -18,6 +18,8 @@ const state = {
   currentRunData: null,
   liveData: {}, // { "provider:model": { dots: [], n_correct, total_cost, ... } }
   chart: null,
+  summaryRows: [],
+  summarySort: { key: 'accuracy', dir: 'desc' },
 };
 
 // ============ Tabs ============
@@ -500,8 +502,8 @@ function renderLiveModels() {
     div.className = 'live-model';
     const dotsHtml = m.dots.map(d => {
       const label = d.kind === 'cache' ? 'cache hit' : (d.kind === 'correct' ? 'صحيح' : (d.kind === 'wrong' ? 'خطأ' : 'خطأ تشغيل'));
-      const title = `${d.pid || ''} — ${label} (${(d.latency || 0).toFixed(0)}ms)`;
-      return `<div class="dot ${d.kind}" title="${title}"></div>`;
+      const title = `${d.pid || ''} — ${label} (${(d.latency || 0).toFixed(0)}ms) — انقر للتفاصيل`;
+      return `<div class="dot ${d.kind} dot-clickable" title="${title}" data-pid="${d.pid || ''}" data-provider="${m.provider}" data-model="${m.model}"></div>`;
     }).join('');
     div.innerHTML = `
       <div class="live-model-header">
@@ -512,6 +514,55 @@ function renderLiveModels() {
     `;
     c.appendChild(div);
   });
+
+  // ربط النقر على النقاط لفتح تفاصيل المسألة
+  document.querySelectorAll('#live-models .dot-clickable').forEach(el => {
+    el.addEventListener('click', () => {
+      const pid = el.dataset.pid;
+      const provider = el.dataset.provider;
+      const model = el.dataset.model;
+      if (pid) showProblemDetail(pid, provider, model);
+    });
+  });
+}
+
+async function showProblemDetail(problemId, provider, model) {
+  // إذا الـ run منتهي نجلب التفاصيل من السيرفر، وإلا نستخدم البيانات اللحظية المحفوظة
+  let detail = null;
+  if (state.currentRunData && state.currentRunData.details) {
+    detail = state.currentRunData.details.find(d =>
+      d.problem_id === problemId && d.provider === provider && d.model === model
+    );
+  }
+  if (!detail && state.currentRunId) {
+    const r = await fetch(`${API}/api/runs/${state.currentRunId}`);
+    if (r.ok) {
+      const data = await r.json();
+      state.currentRunData = data;
+      detail = (data.details || []).find(d =>
+        d.problem_id === problemId && d.provider === provider && d.model === model
+      );
+    }
+  }
+  const body = document.getElementById('modal-body');
+  if (!detail) {
+    body.innerHTML = `<h2>${problemId}</h2><p class="muted">لا توجد بيانات بعد — الـ run قد يكون قيد التشغيل.</p>`;
+  } else {
+    const status = detail.error ? 'error' : (detail.correct ? 'success' : 'error');
+    const statusText = detail.error ? 'خطأ' : (detail.correct ? 'صحيح' : 'خطأ');
+    body.innerHTML = `
+      <h2>${problemId}</h2>
+      <div class="detail-header">
+        <span>${detail.provider}/${detail.model}</span>
+        <span class="badge ${status}">${statusText}</span>
+      </div>
+      <div class="muted small">${detail.judgment || ''}</div>
+      <div class="muted small">${(detail.latency_ms || 0).toFixed(0)}ms • $${(detail.cost_usd || 0).toFixed(6)}</div>
+      <h3 style="margin-top:14px;font-size:13px;color:var(--text-muted);">رد النموذج:</h3>
+      <div class="detail-response">${escapeHtml(detail.response_text || '')}</div>
+    `;
+  }
+  document.getElementById('details-modal').classList.remove('hidden');
 }
 
 // ============ Summary ============
@@ -529,21 +580,9 @@ async function showSummary(runId) {
     document.getElementById('h2h-section').classList.add('hidden');
   }
 
-  const tbl = document.getElementById('summary-table');
-  let html = `<table>
-    <tr><th>المزود</th><th>النموذج</th><th>الدقة</th><th>صحيح/الكل</th><th>التكلفة</th><th>زمن متوسط</th></tr>`;
-  data.models.forEach(m => {
-    html += `<tr>
-      <td>${m.provider}</td>
-      <td>${m.model}</td>
-      <td class="score-cell">${(m.accuracy * 100).toFixed(1)}%</td>
-      <td>${m.n_correct}/${m.n}</td>
-      <td>$${(m.total_cost || 0).toFixed(4)}</td>
-      <td>${(m.avg_latency_ms || 0).toFixed(0)}ms</td>
-    </tr>`;
-  });
-  html += `</table>`;
-  tbl.innerHTML = html;
+  state.summaryRows = data.models.slice();
+  state.summarySort = { key: 'accuracy', dir: 'desc' };
+  renderSummaryTable();
 
   // Chart — يقرأ ألوان المظهر الحالي من CSS variables
   if (state.chart) state.chart.destroy();
@@ -607,6 +646,104 @@ document.getElementById('view-details-btn').addEventListener('click', async () =
 document.getElementById('modal-close').addEventListener('click', () => {
   document.getElementById('details-modal').classList.add('hidden');
 });
+
+// ============ Sortable Summary Table ============
+const SUMMARY_COLUMNS = [
+  { key: 'provider', label: 'المزود' },
+  { key: 'model', label: 'النموذج' },
+  { key: 'accuracy', label: 'الدقة (95% CI)' },
+  { key: 'n_correct', label: 'صحيح/الكل' },
+  { key: 'total_cost', label: 'التكلفة' },
+  { key: 'avg_latency_ms', label: 'زمن متوسط' },
+];
+
+function renderSummaryTable() {
+  const rows = state.summaryRows.slice();
+  const { key, dir } = state.summarySort;
+  rows.sort((a, b) => {
+    const av = a[key]; const bv = b[key];
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    const cmp = (typeof av === 'number' && typeof bv === 'number')
+      ? av - bv
+      : String(av).localeCompare(String(bv), 'ar');
+    return dir === 'asc' ? cmp : -cmp;
+  });
+
+  const ths = SUMMARY_COLUMNS.map(c => {
+    const arrow = c.key === key ? (dir === 'asc' ? '▲' : '▼') : '';
+    return `<th class="sortable" data-key="${c.key}">${c.label} <span class="sort-arrow">${arrow}</span></th>`;
+  }).join('');
+
+  const trs = rows.map(m => {
+    const acc = (m.accuracy * 100).toFixed(1);
+    const margin = ((m.ci_margin || 0) * 100).toFixed(1);
+    return `<tr>
+      <td>${m.provider}</td>
+      <td>${m.model}</td>
+      <td class="score-cell">${acc}% <span class="ci">±${margin}</span></td>
+      <td>${m.n_correct}/${m.n}</td>
+      <td>$${(m.total_cost || 0).toFixed(4)}</td>
+      <td>${(m.avg_latency_ms || 0).toFixed(0)}ms</td>
+    </tr>`;
+  }).join('');
+
+  const tbl = document.getElementById('summary-table');
+  tbl.innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+  tbl.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const k = th.dataset.key;
+      if (state.summarySort.key === k) {
+        state.summarySort.dir = state.summarySort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.summarySort = { key: k, dir: 'desc' };
+      }
+      renderSummaryTable();
+    });
+  });
+}
+
+function copySummaryAsMarkdown() {
+  if (!state.summaryRows.length) {
+    alert('لا توجد نتائج لنسخها');
+    return;
+  }
+  const header = '| المزود | النموذج | الدقة (95% CI) | صحيح/الكل | التكلفة | زمن متوسط |';
+  const sep =    '|--------|---------|----------------|-----------|---------|-----------|';
+  const rows = state.summaryRows.map(m => {
+    const acc = (m.accuracy * 100).toFixed(1);
+    const margin = ((m.ci_margin || 0) * 100).toFixed(1);
+    return `| ${m.provider} | ${m.model} | ${acc}% ± ${margin} | ${m.n_correct}/${m.n} | $${(m.total_cost || 0).toFixed(4)} | ${(m.avg_latency_ms || 0).toFixed(0)}ms |`;
+  }).join('\n');
+  const md = `${header}\n${sep}\n${rows}\n`;
+
+  navigator.clipboard.writeText(md).then(() => {
+    showToast('✓ تم النسخ كـ Markdown');
+  }).catch(() => {
+    // fallback عبر textarea
+    const ta = document.createElement('textarea');
+    ta.value = md;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('✓ تم النسخ');
+  });
+}
+
+function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.className = 'toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.classList.add('toast-visible');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('toast-visible'), 2400);
+}
 
 // ============ Head-to-Head Matrix ============
 async function renderH2H(runId) {
@@ -719,6 +856,7 @@ function exportRun(fmt) {
 
 document.getElementById('export-json-btn').addEventListener('click', () => exportRun('json'));
 document.getElementById('export-csv-btn').addEventListener('click', () => exportRun('csv'));
+document.getElementById('copy-md-btn').addEventListener('click', copySummaryAsMarkdown);
 
 function escapeHtml(s) {
   return (s || '').replace(/[&<>"']/g, c => ({
