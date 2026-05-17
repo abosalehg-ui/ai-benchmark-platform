@@ -264,10 +264,28 @@ class MyBenchmark(BaseBenchmark):
 ## 🔒 الأمان والخصوصية
 
 ### Sandbox الكود
-بنشمارك `HumanEval` ينفّذ كود مولَّد من النموذج. للحماية:
-- `subprocess` بـ `timeout=10s`
-- قائمة سوداء للاستيرادات: `os.system`, `subprocess`, `socket`, `urllib`, ...
-- قابل للتعطيل في الإعدادات (للمطوّرين الذين يشغّلون محلياً ويثقون بالنماذج)
+بنشمارك `HumanEval` ينفّذ كود مولَّد من النموذج في **sandbox قابل للاختيار**:
+
+| Backend | الأمان | المتطلبات | للاستخدام |
+|---------|:---:|---|---|
+| `subprocess` (افتراضي) | ⚠️ متوسط | لا شيء | محلي على جهازك فقط |
+| `docker` ⭐ | 🛡️ عالٍ | Docker daemon شغّال | للنشر/الإنتاج |
+| `auto` | متغيّر | يحاول Docker، يقع على subprocess | المرونة |
+
+التحكّم عبر env:
+```bash
+SANDBOX_BACKEND=docker uvicorn backend.main:app --port 8000
+```
+
+**خصائص Docker backend:**
+- `--network=none` (لا اتصال خارجي)
+- `--memory=256m --cpus=0.5 --pids-limit=64` (حدود موارد)
+- `--read-only --user=65534:65534` (نظام ملفات للقراءة، مستخدم غير root)
+- `--security-opt=no-new-privileges`
+- `--rm` (يُحذَف تلقائياً)
+- صورة افتراضية: `python:3.11-slim` (قابلة للتغيير بـ `SANDBOX_DOCKER_IMAGE`)
+
+تبويب "المفاتيح" في الواجهة يعرض الـ backend الحالي وما إذا كان معزولاً.
 
 ### المفاتيح
 - محفوظة في `localStorage` المتصفح
@@ -306,6 +324,7 @@ class MyBenchmark(BaseBenchmark):
 - [x] Responsive للجوال
 - [x] دعم Groq، Mistral، Cohere، xAI
 - [x] تقدير التكلفة قبل التشغيل (POST /api/estimate)
+- [x] Sandbox آمن بـ Docker (network=none + resource limits + non-root)
 - [ ] توسيع البنشمارك السعودي إلى 200+ سؤال
 - [ ] Docker Compose للنشر الذاتي + Sandbox آمن (Docker / Pyodide)
 - [ ] تصدير النتائج كـ PDF

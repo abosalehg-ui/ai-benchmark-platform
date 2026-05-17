@@ -49,9 +49,24 @@ document.querySelectorAll('.tab').forEach(btn => {
 // ============ Init ============
 async function init() {
   loadKeys();
-  await Promise.all([loadBenchmarks(), loadProviders(), loadOllamaModels()]);
+  await Promise.all([loadBenchmarks(), loadProviders(), loadOllamaModels(), loadSandboxStatus()]);
   // نموذج افتراضي
   if (!state.models.length) addModelRow();
+}
+
+async function loadSandboxStatus() {
+  const el = document.getElementById('sandbox-status');
+  if (!el) return;
+  try {
+    const r = await fetch(API + '/api/sandbox/status');
+    const data = await r.json();
+    const icon = data.is_isolated ? '🛡️' : '⚠️';
+    const cls = data.is_isolated ? 'sandbox-ok' : 'sandbox-warn';
+    el.className = `sandbox-status ${cls}`;
+    el.innerHTML = `${icon} <strong>${data.backend}</strong> — ${data.note}`;
+  } catch (e) {
+    el.textContent = 'تعذّر التحقق من الـ sandbox';
+  }
 }
 
 async function loadBenchmarks() {
