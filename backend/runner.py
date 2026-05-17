@@ -1,14 +1,14 @@
 """محرّك تشغيل البنشمارك مع تتبّع التقدّم."""
 from __future__ import annotations
 
-import asyncio
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, field
 from typing import AsyncIterator
 
 from backend import db
 from backend.benchmarks import make_benchmark
 from backend.providers import make_provider
+from backend.providers.base import ModelResponse
 
 
 @dataclass
@@ -27,19 +27,61 @@ class RunRequest:
     n_problems: int = 10
     judge: ModelTarget | None = None  # للـ llm_judge
     enforce_safety: bool = True
+    use_cache: bool = True
+    budget_usd: float | None = None  # لو تجاوزت التشغيل يتوقف
+    categories: list[str] = field(default_factory=list)  # فلتر للبنشماركات المصنّفة
 
 
 @dataclass
 class ProgressEvent:
-    event: str  # "start" | "progress" | "result" | "model_done" | "done" | "error"
+    event: str  # "start" | "progress" | "result" | "model_done" | "done" | "error" | "budget_exceeded"
     run_id: str
     payload: dict
+
+
+def _filter_problems(problems, categories: list[str]):
+    if not categories:
+        return problems
+    wanted = set(categories)
+    return [p for p in problems if p.metadata.get("category") in wanted]
+
+
+async def _complete_with_cache(provider, target: ModelTarget, prompt: str, system: str | None,
+                               use_cache: bool) -> tuple[ModelResponse, bool]:
+    """يستخدم cache إذا كان مفعّلاً. يرجع (response, cache_hit)."""
+    if not use_cache:
+        resp = await provider.complete(prompt=prompt, model=target.model,
+                                       max_tokens=2048, temperature=0.0, system=system)
+        return resp, False
+
+    key = db.make_cache_key(target.provider, target.model, prompt, system, 0.0)
+    cached = db.cache_get(key)
+    if cached:
+        return ModelResponse(
+            text=cached["response_text"],
+            input_tokens=cached["input_tokens"],
+            output_tokens=cached["output_tokens"],
+            latency_ms=0.0,  # cache hit = صفر
+            cost_usd=0.0,    # cache hit = صفر دولار
+            model_id=target.model,
+        ), True
+
+    resp = await provider.complete(prompt=prompt, model=target.model,
+                                   max_tokens=2048, temperature=0.0, system=system)
+    if not resp.is_error and resp.text:
+        db.cache_put(key, target.provider, target.model,
+                     text=resp.text, input_tokens=resp.input_tokens,
+                     output_tokens=resp.output_tokens, cost_usd=resp.cost_usd,
+                     latency_ms=resp.latency_ms)
+    return resp, False
 
 
 async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
     """يشغّل البنشمارك ويُنتج أحداث تقدّم لحظية (async generator)."""
     benchmark = make_benchmark(req.benchmark)
-    problems = benchmark.load()[: req.n_problems]
+    all_problems = benchmark.load()
+    filtered = _filter_problems(all_problems, req.categories)
+    problems = filtered[: req.n_problems]
     n = len(problems)
 
     config = {
@@ -50,6 +92,9 @@ async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
             {"provider": req.judge.provider, "model": req.judge.model}
             if req.judge else None
         ),
+        "use_cache": req.use_cache,
+        "budget_usd": req.budget_usd,
+        "categories": req.categories,
     }
     run_id = db.create_run(req.benchmark, n, config)
 
@@ -60,6 +105,8 @@ async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
             "n_problems": n,
             "n_models": len(req.targets),
             "total_calls": n * len(req.targets),
+            "use_cache": req.use_cache,
+            "budget_usd": req.budget_usd,
         },
     )
 
@@ -68,11 +115,15 @@ async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
         judge_provider = make_provider(
             req.judge.provider, req.judge.api_key, req.judge.base_url
         )
-        # نضع الموديل المختار في أول القائمة عشان evaluate تستخدمه
         judge_provider.available_models = [req.judge.model]
+
+    grand_total_cost = 0.0
+    budget_exceeded = False
 
     try:
         for target in req.targets:
+            if budget_exceeded:
+                break
             provider = make_provider(target.provider, target.api_key, target.base_url)
             n_correct = 0
             total_cost = 0.0
@@ -80,12 +131,8 @@ async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
 
             for i, problem in enumerate(problems):
                 prompt = benchmark.build_prompt(problem)
-                response = await provider.complete(
-                    prompt=prompt,
-                    model=target.model,
-                    max_tokens=2048,
-                    temperature=0.0,
-                    system=benchmark.system_prompt,
+                response, cache_hit = await _complete_with_cache(
+                    provider, target, prompt, benchmark.system_prompt, req.use_cache
                 )
                 score = await benchmark.evaluate(problem, response, judge_provider)
 
@@ -93,6 +140,7 @@ async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
                     n_correct += 1
                 total_cost += response.cost_usd
                 total_latency += response.latency_ms
+                grand_total_cost += response.cost_usd
 
                 db.insert_result(
                     run_id=run_id,
@@ -122,10 +170,26 @@ async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
                         "correct": score.correct,
                         "running_accuracy": n_correct / (i + 1),
                         "running_cost": round(total_cost, 6),
+                        "grand_total_cost": round(grand_total_cost, 6),
                         "latency_ms": round(response.latency_ms, 1),
+                        "cache_hit": cache_hit,
                         "error": score.error or response.error,
                     },
                 )
+
+                # فحص الميزانية بعد كل استدعاء
+                if req.budget_usd is not None and grand_total_cost >= req.budget_usd:
+                    budget_exceeded = True
+                    yield ProgressEvent(
+                        event="budget_exceeded",
+                        run_id=run_id,
+                        payload={
+                            "budget_usd": req.budget_usd,
+                            "spent_usd": round(grand_total_cost, 6),
+                            "message": "تم تجاوز الميزانية المحدّدة. توقّف التشغيل.",
+                        },
+                    )
+                    break
 
             yield ProgressEvent(
                 event="model_done",
@@ -141,8 +205,9 @@ async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
                 },
             )
 
-        db.finish_run(run_id, "completed")
-        yield ProgressEvent(event="done", run_id=run_id, payload={})
+        final_status = "aborted_budget" if budget_exceeded else "completed"
+        db.finish_run(run_id, final_status)
+        yield ProgressEvent(event="done", run_id=run_id, payload={"status": final_status})
 
     except Exception as e:
         db.finish_run(run_id, "failed")

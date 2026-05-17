@@ -25,6 +25,24 @@
   --radius-sm: 8px;
 }
 
+/* مظهر فاتح */
+html[data-theme="light"] {
+  --bg: #f7f8fc;
+  --bg-elev: #ffffff;
+  --bg-panel: #ffffff;
+  --border: #d8dde9;
+  --border-soft: #e7ebf2;
+  --text: #1a2038;
+  --text-muted: #5b6478;
+  --accent: #b87c1a;
+  --accent-soft: #9c6614;
+  --primary: #3e6dd1;
+  --primary-deep: #2d54a8;
+  --success: #2a8c63;
+  --danger: #c83737;
+  --warning: #b87c1a;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
@@ -668,3 +686,99 @@ footer a:hover { text-decoration: underline; }
 
 .hidden { display: none !important; }
 .panel-wide { /* nothing extra here, kept for semantic */ }
+
+/* ============= THEME TOGGLE ============= */
+.theme-toggle {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  color: var(--text);
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  margin-inline-start: 8px;
+  transition: border 0.15s, background 0.15s;
+}
+.theme-toggle:hover { border-color: var(--primary); }
+
+/* ============= RUN OPTIONS ============= */
+.run-options {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.field-inline label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.field-inline input {
+  width: 120px;
+}
+
+/* ============= CATEGORIES ============= */
+.categories-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.cat-chip {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s;
+}
+
+.cat-chip:hover { border-color: var(--primary); }
+
+.cat-chip.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* ============= EXPORT BUTTONS ============= */
+.export-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+/* ============= CACHE BADGE في النتائج ============= */
+.dot.cache {
+  background: var(--accent);
+  opacity: 0.6;
+  border: 1px solid var(--accent-soft);
+}
+
+/* ============= BUDGET WARNING ============= */
+.budget-warning {
+  background: rgba(230, 162, 60, 0.15);
+  border: 1px solid var(--warning);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin: 12px 0;
+  font-size: 13px;
+}

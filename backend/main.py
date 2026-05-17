@@ -1,16 +1,17 @@
 """خادم FastAPI لمنصة البنشمارك."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend import db
-from backend.benchmarks import BENCHMARKS, list_benchmarks
+from backend.benchmarks import BENCHMARKS, list_benchmarks, get_benchmark_categories
 from backend.providers import PROVIDERS
 from backend.providers.ollama import OllamaProvider
 from backend.runner import ModelTarget, RunRequest, event_to_sse, run_benchmark
@@ -21,11 +22,14 @@ FRONTEND_DIR = ROOT / "frontend"
 
 app = FastAPI(title="AI Benchmark Platform", version="0.1.0")
 
+# المنصة مصمّمة للاستخدام المحلي. لو احتجت توسيع origins حدّد ALLOWED_ORIGINS كـ env.
+_default_origins = "http://localhost:8000,http://127.0.0.1:8000"
+_allowed = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -75,6 +79,18 @@ class RunRequestBody(BaseModel):
     n_problems: int = Field(default=10, ge=1, le=100)
     targets: list[dict]
     judge: dict | None = None
+    use_cache: bool = True
+    budget_usd: float | None = Field(default=None, ge=0)
+    categories: list[str] = Field(default_factory=list)
+    enforce_safety: bool = True
+
+
+@app.get("/api/benchmarks/{benchmark_id}/categories")
+def get_categories(benchmark_id: str):
+    """قائمة التصنيفات المتاحة في البنشمارك (لو الداتاست يدعمها)."""
+    if benchmark_id not in BENCHMARKS:
+        raise HTTPException(404, "بنشمارك غير معروف")
+    return {"categories": get_benchmark_categories(benchmark_id)}
 
 
 @app.post("/api/run")
@@ -108,6 +124,10 @@ async def post_run(req: RunRequestBody):
         targets=targets,
         n_problems=req.n_problems,
         judge=judge,
+        use_cache=req.use_cache,
+        budget_usd=req.budget_usd,
+        categories=req.categories,
+        enforce_safety=req.enforce_safety,
     )
 
     async def stream():
@@ -134,11 +154,60 @@ def get_run(run_id: str):
     return run
 
 
+@app.get("/api/runs/{run_id}/export")
+def export_run(run_id: str, format: str = "json"):
+    """تصدير نتائج Run كاملة بصيغة JSON أو CSV."""
+    run = db.get_run(run_id)
+    if not run:
+        raise HTTPException(404, "Run غير موجود")
+
+    fmt = format.lower()
+    if fmt == "json":
+        import json as _json
+        body = _json.dumps(run, ensure_ascii=False, indent=2)
+        return PlainTextResponse(
+            body,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="run_{run_id}.json"'},
+        )
+    if fmt == "csv":
+        import csv
+        import io
+        buf = io.StringIO()
+        cols = [
+            "run_id", "provider", "model", "problem_id", "correct", "raw_score",
+            "latency_ms", "input_tokens", "output_tokens", "cost_usd",
+            "judgment", "error", "response_text",
+        ]
+        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        for d in run.get("details", []):
+            w.writerow({k: d.get(k, "") for k in cols})
+        # BOM علشان Excel يفتح UTF-8 صح
+        return PlainTextResponse(
+            "﻿" + buf.getvalue(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="run_{run_id}.csv"'},
+        )
+    raise HTTPException(400, "format يجب أن يكون json أو csv")
+
+
 @app.delete("/api/runs/{run_id}")
 def delete_run(run_id: str):
     if not db.delete_run(run_id):
         raise HTTPException(404, "Run غير موجود")
     return {"ok": True}
+
+
+@app.get("/api/cache/stats")
+def get_cache_stats():
+    return db.cache_stats()
+
+
+@app.delete("/api/cache")
+def clear_cache():
+    n = db.cache_clear()
+    return {"cleared": n}
 
 
 # ================== الواجهة ==================

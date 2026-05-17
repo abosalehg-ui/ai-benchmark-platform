@@ -114,15 +114,76 @@ def test_arabic_mmlu_extract_letter():
     assert ArabicMMLUBenchmark.extract_letter("الإجابة: أ") == "أ"
 
 
+def test_response_cache_roundtrip():
+    """التخزين المؤقت يحفظ ويرجّع الاستجابة."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        import backend.db as db
+        db.DB_PATH = Path(tmp) / "test.db"
+        db.init_db()
+
+        key = db.make_cache_key("anthropic", "claude-haiku", "ما 1+1؟", "system", 0.0)
+        assert db.cache_get(key) is None
+
+        db.cache_put(
+            key, "anthropic", "claude-haiku",
+            text="2", input_tokens=10, output_tokens=1, cost_usd=0.0001, latency_ms=42.5,
+        )
+
+        got = db.cache_get(key)
+        assert got is not None
+        assert got["response_text"] == "2"
+        assert got["input_tokens"] == 10
+
+        # نفس المدخلات = نفس المفتاح
+        key2 = db.make_cache_key("anthropic", "claude-haiku", "ما 1+1؟", "system", 0.0)
+        assert key == key2
+
+        # مدخل مختلف = مفتاح مختلف
+        key3 = db.make_cache_key("anthropic", "claude-haiku", "ما 2+2؟", "system", 0.0)
+        assert key3 != key
+
+        stats = db.cache_stats()
+        assert stats["entries"] == 1
+
+
+def test_benchmark_categories_endpoint_logic():
+    """البنشمارك السعودي يعرض تصنيفات متعددة."""
+    from backend.benchmarks import get_benchmark_categories
+
+    cats = get_benchmark_categories("saudi_legal")
+    assert len(cats) >= 5
+    # كل تصنيف عبارة عن string غير فاضي
+    assert all(isinstance(c, str) and c for c in cats)
+
+
+def test_run_request_accepts_new_options():
+    """RunRequest يقبل الحقول الجديدة (cache, budget, categories)."""
+    from backend.runner import RunRequest, ModelTarget
+
+    req = RunRequest(
+        benchmark="saudi_legal",
+        targets=[ModelTarget(provider="ollama", model="x", api_key="")],
+        n_problems=2,
+        use_cache=False,
+        budget_usd=0.50,
+        categories=["نظام العمل"],
+    )
+    assert req.use_cache is False
+    assert req.budget_usd == 0.50
+    assert req.categories == ["نظام العمل"]
+
+
 def test_db_lifecycle():
     """اختبار دورة حياة run كامل."""
-    import os
     import tempfile
+    from pathlib import Path
 
     # استخدم DB مؤقت
     with tempfile.TemporaryDirectory() as tmp:
         import backend.db as db
-        from pathlib import Path
         db.DB_PATH = Path(tmp) / "test.db"
 
         db.init_db()
