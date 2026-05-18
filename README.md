@@ -330,6 +330,9 @@ SANDBOX_BACKEND=docker uvicorn backend.main:app --port 8000
 - [x] بنشمارك Tool Use (Function calling - JSON parsing)
 - [x] بنشمارك اللهجات السعودية (نجدية، حجازية، جنوبية، شرقية)
 - [x] توسيع البنشمارك السعودي إلى 150 سؤال (كل تصنيف ≥ 10 أسئلة)
+- [x] فواصل ثقة 95% (Wilson) على الدقة
+- [x] جدول ملخّص قابل للترتيب + نسخ كـ Markdown
+- [x] النقر على نقطة الحالة يفتح تفاصيل المسألة
 - [ ] توسيع البنشمارك السعودي إلى 200+ سؤال
 - [ ] Docker Compose للنشر الذاتي + Sandbox آمن (Docker / Pyodide)
 - [ ] تصدير النتائج كـ PDF

@@ -437,6 +437,35 @@ def test_head_to_head_returns_none_for_missing_run():
         assert db.head_to_head("nonexistent") is None
 
 
+def test_wilson_interval():
+    """فاصل ويلسون يحسب الحدود بشكل صحيح."""
+    from backend.db import wilson_interval
+
+    # 7/10 ≈ 70%
+    ci = wilson_interval(7, 10)
+    assert 0.0 <= ci["lower"] < 0.7 < ci["upper"] <= 1.0
+    assert ci["margin"] > 0
+
+    # n=0 → كل القيم صفر
+    ci0 = wilson_interval(0, 0)
+    assert ci0 == {"center": 0.0, "margin": 0.0, "lower": 0.0, "upper": 0.0}
+
+    # كل النتائج صحيحة (10/10): الحد الأعلى = 1.0، الحد الأدنى < 1
+    ci_perfect = wilson_interval(10, 10)
+    assert ci_perfect["upper"] == 1.0
+    assert ci_perfect["lower"] < 1.0  # ويلسون لا يعطي [1,1] حتى مع كل صحيح
+
+    # كل النتائج خاطئة (0/10): الحد الأدنى = 0، الحد الأعلى > 0
+    ci_worst = wilson_interval(0, 10)
+    assert ci_worst["lower"] == 0.0
+    assert ci_worst["upper"] > 0.0
+
+    # n أكبر = فاصل أضيق
+    ci_small = wilson_interval(50, 100)
+    ci_big = wilson_interval(500, 1000)
+    assert ci_big["margin"] < ci_small["margin"]
+
+
 def test_db_lifecycle():
     """اختبار دورة حياة run كامل."""
     import tempfile
