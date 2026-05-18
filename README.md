@@ -4,12 +4,13 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
-  <img src="https://img.shields.io/badge/status-beta-orange.svg" alt="Status: Beta">
+  <img src="https://img.shields.io/badge/status-active-success.svg" alt="Status: Active">
   <img src="https://img.shields.io/badge/RTL-supported-success.svg" alt="RTL Supported">
   <img src="https://img.shields.io/badge/arabic-🇸🇦-blueviolet.svg" alt="Arabic Support">
+  <img src="https://img.shields.io/badge/sandbox-docker-2496ed.svg" alt="Docker Sandbox">
 </p>
 
-> منصة مفتوحة المصدر تشغّلها محلياً لمقارنة نماذج الذكاء الاصطناعي جنباً إلى جنب على بنشماركات حقيقية — بما فيها بنشمارك حصري للأنظمة السعودية والفقه الإسلامي.
+> منصة مفتوحة المصدر لمقارنة نماذج الذكاء الاصطناعي جنباً إلى جنب على بنشماركات حقيقية — تجمع بين **8 بنشماركات** (273 سؤالاً) و **9 مزوّدين** (33+ نموذج)، مع تركيز خاص على **اللغة العربية** و **الأنظمة السعودية والفقه الإسلامي**.
 
 <p align="center">
   <img src="screenshots/ui.png" alt="واجهة منصة بنشمارك الذكاء الاصطناعي" width="800">
@@ -17,20 +18,27 @@
   <sub><i>الواجهة الرئيسية — مقارنة النماذج جنباً إلى جنب</i></sub>
 </p>
 
+<p align="center">
+  <b>8</b> بنشماركات &nbsp;•&nbsp; <b>9</b> مزوّدين &nbsp;•&nbsp; <b>33+</b> نموذج &nbsp;•&nbsp; <b>273</b> سؤال &nbsp;•&nbsp; <b>150</b> سؤال سعودي
+</p>
+
 ---
 
 ## 📑 المحتوى
 
 - [نظرة سريعة](#-نظرة-سريعة)
-- [المزايا](#-المزايا)
+- [المزايا الرئيسية](#-المزايا-الرئيسية)
 - [التشغيل السريع](#-التشغيل-السريع)
 - [إدارة المفاتيح](#-إدارة-المفاتيح)
 - [البنشمارك السعودي المخصّص](#-البنشمارك-السعودي-المخصص)
-- [البنية التقنية](#-البنية-التقنية)
+- [Sandbox تشغيل الكود](#%EF%B8%8F-sandbox-تشغيل-الكود)
+- [البنية التقنية](#%EF%B8%8F-البنية-التقنية)
+- [مرجع الـ API](#-مرجع-الـ-api)
+- [متغيّرات البيئة](#%EF%B8%8F-متغيّرات-البيئة)
 - [إضافة بنشمارك جديد](#-إضافة-بنشمارك-جديد)
 - [الأمان والخصوصية](#-الأمان-والخصوصية)
-- [حدود المنصة](#-حدود-المنصة)
-- [خريطة الطريق](#-خريطة-الطريق)
+- [حدود المنصة](#%EF%B8%8F-حدود-المنصة)
+- [خريطة الطريق](#%EF%B8%8F-خريطة-الطريق)
 - [المساهمة](#-المساهمة)
 - [الترخيص](#-الترخيص)
 
@@ -38,69 +46,91 @@
 
 ## 🎯 نظرة سريعة
 
-قارن **Claude** و **GPT** و **Gemini** والنماذج المحلية (**Ollama**) على نفس المسائل، واحصل على:
+قارن نماذج كبار مزوّدي الذكاء الاصطناعي (**Claude**، **GPT**، **Gemini**، **Grok**، **Mistral**، **Cohere**، **Llama عبر Groq**) والنماذج المحلية (**Ollama**) جنباً إلى جنب على نفس المسائل، واحصل لحظياً على:
 
-- ✅ **الدقة** — نسبة الإجابات الصحيحة لكل بنشمارك
-- 💰 **التكلفة** — بالدولار لكل تشغيل
-- ⏱️ **زمن الاستجابة** — متوسط وقت الإجابة
-- 📊 **تاريخ كامل** — محفوظ في SQLite محلي
+- ✅ **الدقة** مع **فاصل ثقة 95%** (Wilson)
+- 💰 **التكلفة الفعلية + تقدير مسبق** بالدولار
+- ⏱️ **زمن الاستجابة** (متوسط ولكل سؤال)
+- 🔀 **مصفوفة Head-to-Head** للمقارنة الزوجية
+- 📊 **عرض جنباً إلى جنب** (Diff view) للإجابات
+- 📜 **تاريخ كامل** محفوظ في SQLite محلي
 
-الإخراج لحظي عبر Server-Sent Events — تشوف النتائج تتحدّث سؤال بسؤال.
+الإخراج لحظي عبر Server-Sent Events — تشاهد النتائج تتحدّث سؤال بسؤال.
 
 ---
 
-## ✨ المزايا
+## ✨ المزايا الرئيسية
 
-### المزوّدون المدعومون
+### 🤖 المزوّدون المدعومون (9)
 
-| المزوّد | النماذج | ملاحظة |
-|---------|---------|---------|
-| Anthropic | Claude Opus / Sonnet / Haiku | — |
-| OpenAI | GPT-4o, GPT-4, o1 | — |
-| Google | Gemini 1.5 / 2.0 | — |
-| **Groq** ⭐ | Llama 3.3 70B، Mixtral، Gemma 2، DeepSeek-R1-Distill | استنتاج فائق السرعة |
-| **Mistral** ⭐ | Mistral Large/Small، Codestral، Nemo، Ministral | API مباشر |
-| **Cohere** ⭐ | Command R+ / R / R7B | متعدد اللغات قوي |
-| **xAI** ⭐ | Grok 2 / Grok 2 Mini | — |
-| Ollama | أي نموذج محلي | مجاني |
-| OpenRouter | DeepSeek, Mistral, Qwen, Llama | بوابة موحّدة |
+| المزوّد | عدد النماذج | أمثلة | ملاحظة |
+|---------|:---:|---------|---------|
+| **Anthropic** | 4 | Claude Opus 4.7، Sonnet 4.6، Haiku 4.5 | — |
+| **OpenAI** | 5 | GPT-4o، GPT-4-Turbo، o1-preview | — |
+| **Google** | 3 | Gemini 1.5 Pro/Flash، Gemini 2.0 Flash | — |
+| **Groq** | 5 | Llama 3.3 70B، Mixtral، Gemma 2، DeepSeek-R1-Distill | استنتاج فائق السرعة |
+| **Mistral** | 5 | Large، Small، Codestral، Nemo، Ministral | API مباشر |
+| **Cohere** | 4 | Command R+ / R / R7B | متعدد اللغات قوي |
+| **xAI** | 3 | Grok 2 / Grok 2 Mini / Grok Beta | — |
+| **Ollama** | ديناميكي | أي نموذج محلي (Llama، Qwen، Mistral…) | مجاني — يكتشف النماذج المثبّتة تلقائياً |
+| **OpenRouter** | 4 | DeepSeek، Mistral، Qwen، Llama | بوابة موحّدة لمئات النماذج |
 
-### البنشماركات المتوفّرة
+### 📚 البنشماركات المتوفّرة (8)
 
-| البنشمارك | الموضوع | نوع التقييم | عدد الأسئلة |
-|-----------|---------|---------|:---:|
+| البنشمارك | الموضوع | نوع التقييم | الأسئلة |
+|-----------|---------|-------------|:---:|
 | `HumanEval` | برمجة بايثون | تشغيل كود في sandbox | 10 |
 | `GSM8K` | رياضيات | إجابة رقمية | 20 |
-| `MMLU` | معرفة عامة | اختيار من متعدّد | 20 |
+| `MMLU` | معرفة عامة (إنجليزي) | اختيار من متعدّد | 20 |
 | `ArabicMMLU` | معرفة بالعربية | اختيار من متعدّد | 20 |
-| **`Saudi Legal & Fiqh`** ⭐ | الأنظمة السعودية + الفقه | اختيار من متعدّد | 150 |
-| **`Saudi Dialects`** ⭐ | اللهجات السعودية (نجدية/حجازية/جنوبية/شرقية) | اختيار من متعدّد | 25 |
-| **`Tool Use`** ⭐ | اختيار الأداة وملء معاملاتها JSON | تحليل JSON + مطابقة الأرغومنتات | 20 |
+| ⭐ **`Saudi Legal & Fiqh`** | الأنظمة السعودية + الفقه (13 تصنيف) | اختيار من متعدّد مع شرح ومصدر | **150** |
+| ⭐ **`Saudi Dialects`** | اللهجات السعودية (نجدية/حجازية/جنوبية/شرقية) | اختيار من متعدّد | 25 |
+| ⭐ **`Tool Use`** | اختيار الأداة وتعبئة معاملاتها JSON | استخراج JSON + مطابقة الأرغومنتات | 20 |
 | `LLM-as-Judge` | مهام إبداعية | تقييم بنموذج محايد | 8 |
 
-### مزايا إضافية
+كل البنشماركات تدعم **فلتر التصنيفات** و **مستوى الصعوبة** (سهل / متوسط / صعب) حيث ينطبق.
 
-- 📡 **تتبّع لحظي** عبر Server-Sent Events
-- 💰 **حساب تكلفة** تلقائي لكل مزوّد ونموذج
-- 🧾 **حدّ تكلفة (Budget cap)** — أوقف التشغيل تلقائياً عند تجاوز ميزانية محدّدة
-- ⚡ **Cache للاستجابات** — لا يُعاد استدعاء نفس النموذج بنفس السؤال
-- 🏷️ **فلتر بالتصنيفات** — اختر مجالات محدّدة من البنشمارك (مثلاً "نظام العمل" فقط)
-- 📤 **تصدير النتائج** بصيغة CSV أو JSON
-- 🌓 **مظهر فاتح / داكن** — قابل للتبديل من شريط التبويبات
-- 🔄 **Retry تلقائي** مع backoff لكل أخطاء الشبكة العابرة
-- 🔐 **المفاتيح في المتصفح** — تُحفظ في `localStorage`، ما تُخزَّن على الخادم
-- 🌐 **واجهة عربية RTL** — Vanilla JS بدون build step
-- 💾 **تاريخ الاختبارات** محفوظ في SQLite محلي
+### 💎 ميزات إضافية
+
+#### 💰 التحكم بالتكلفة والأداء
+- **تقدير التكلفة المسبق** قبل التشغيل (مبني على طول الـ prompts الفعلية × الأسعار)
+- **حدّ تكلفة (Budget cap)** يوقف التشغيل تلقائياً عند تجاوز الميزانية
+- **Cache للاستجابات** في SQLite (نفس السؤال = صفر تكلفة + صفر latency)
+- **Retry + backoff** تلقائي مع `Retry-After` لكل أخطاء الشبكة العابرة
+
+#### 📊 التحليل والمقارنة
+- **مصفوفة Head-to-Head**: لكل زوج (A, B) نسبة المسائل التي تفوّق فيها A وحده على B
+- **Diff view**: عرض إجابات النماذج على نفس السؤال جنباً إلى جنب
+- **فواصل ثقة 95% (Wilson)** على الدقة — يخبرك متى عيّنتك صغيرة جداً
+- **جدول ملخّص قابل للترتيب** بأي عمود (دقة، تكلفة، latency، …)
+- **النقر على نقطة الحالة** يفتح تفاصيل تلك المسألة فوراً
+
+#### 📤 التصدير والمشاركة
+- تصدير **JSON / CSV** (بـ BOM لاستيراد Excel)
+- **نسخ كـ Markdown** بنقرة (مناسب للـ PR descriptions، التقارير، المدوّنات)
+
+#### 🎨 تجربة المستخدم
+- **مظهر داكن / فاتح** قابل للتبديل
+- **واجهة عربية RTL** بـ Vanilla JS بدون build step
+- **Responsive للجوال** (breakpoints عند 720px و 480px)
+- **📡 تتبّع لحظي** عبر Server-Sent Events
+- **Tooltips** على كل نقطة حالة تعرض ID المسألة + latency
+
+#### 🔐 الخصوصية والأمان
+- **المفاتيح في المتصفح** (`localStorage`) — لا تُخزَّن على الخادم
+- **Sandbox قابل للاختيار** (subprocess محلي أو Docker معزول للنشر)
+- **CORS مقيّد** افتراضياً للـ localhost (قابل للتخصيص عبر env)
+- **صفر analytics أو tracking**
 
 ---
 
 ## 🚀 التشغيل السريع
 
 ### المتطلبات
-
-- Python 3.10 أو أحدث
-- Git
-- (اختياري) [Ollama](https://ollama.ai) لاختبار النماذج المحلية
+- **Python 3.10+** (مُختبَر على 3.10، 3.11، 3.12)
+- **Git**
+- *(اختياري)* [Ollama](https://ollama.ai) لاختبار النماذج المحلية
+- *(اختياري)* **Docker** لتفعيل الـ sandbox المعزول (للنشر)
 
 ### التثبيت
 
@@ -109,7 +139,7 @@ git clone https://github.com/abosalehg-ui/ai-benchmark-platform.git
 cd ai-benchmark-platform
 ```
 
-**على Linux / macOS:**
+**Linux / macOS:**
 
 ```bash
 python3 -m venv .venv
@@ -118,7 +148,7 @@ pip install -r requirements.txt
 uvicorn backend.main:app --reload --port 8000
 ```
 
-**على Windows (PowerShell):**
+**Windows (PowerShell):**
 
 ```powershell
 python -m venv .venv
@@ -127,19 +157,25 @@ pip install -r requirements.txt
 uvicorn backend.main:app --reload --port 8000
 ```
 
-افتح المتصفح على **http://localhost:8000** وتوجّه لتبويب **"المفاتيح"** لإضافة مفاتيح API.
+**مع Sandbox معزول (للنشر):**
+
+```bash
+SANDBOX_BACKEND=docker uvicorn backend.main:app --port 8000
+```
+
+افتح **http://localhost:8000** وتوجّه لتبويب **"المفاتيح"** لإضافة مفاتيح API.
 
 ---
 
 ## 🔑 إدارة المفاتيح
 
-المفاتيح تُحفظ **محلياً فقط** في `localStorage` المتصفح، وتُرسَل في كل طلب كـ header للخادم المحلي الذي بدوره يمرّرها لمزوّد النموذج. **لا يتم تخزينها على الخادم** في أي مرحلة.
+المفاتيح تُحفظ **محلياً فقط** في `localStorage` المتصفح، وتُرسَل في كل طلب كـ header للخادم المحلي الذي بدوره يمرّرها لمزوّد النموذج. **لا تُخزَّن على الخادم** في أي مرحلة.
 
-1. افتح تبويب **"المفاتيح"** في الواجهة
-2. أدخل مفاتيح المزوّدين اللي تبي تختبرهم
-3. اضغط **"حفظ"**
+1. افتح تبويب **"المفاتيح"**
+2. أدخل مفاتيح المزوّدين اللي تبي تختبرهم (8 حقول لـ Anthropic، OpenAI، Gemini، Groq، Mistral، Cohere، xAI، OpenRouter + Ollama URL)
+3. اضغط **"حفظ"** — تبقى في متصفحك فقط
 
-> ⚠️ **لا تنشر السيرفر على الإنترنت العام.** المنصّة مصمّمة للاستخدام المحلي فقط. إذا نشرته بدون authentication، أي شخص يوصله يقدر يستخدم مفاتيحك.
+> ⚠️ **للنشر على الإنترنت العام**: استخدم `SANDBOX_BACKEND=docker`، قيّد `ALLOWED_ORIGINS`، وضع نظام authentication أمام السيرفر. المنصّة لا توفّر auth داخلي.
 
 ---
 
@@ -163,7 +199,42 @@ uvicorn backend.main:app --reload --port 8000
 | فقه - معاملات | 11 | الربا، التقسيط، المضاربة، الرهن، الإجارة المنتهية بالتمليك |
 | فقه - الميراث | 14 | الفرائض، العَوْل، الرَّدّ، العمريتان، الأكدرية، ميراث الجد |
 
-كل سؤال يأتي مع: **الإجابة الصحيحة** + **شرح** + **المصدر النظامي أو الشرعي** + **مستوى الصعوبة**.
+كل سؤال يأتي مع: **الإجابة الصحيحة** + **شرح** + **المصدر النظامي أو الشرعي** (رقم مادة / آية / حديث / قرار مجمع فقهي) + **مستوى صعوبة**.
+
+تغطية الأنظمة الحديثة:
+- **نظام المعاملات المدنية** (م/191 لسنة 1444هـ)
+- **نظام الإثبات** (م/43 لسنة 1443هـ)
+- **نظام الشركات الجديد** (م/132 لسنة 1443هـ)
+- **نظام الأحوال الشخصية** (1443هـ)
+
+---
+
+## 🛡️ Sandbox تشغيل الكود
+
+بنشمارك `HumanEval` ينفّذ كوداً مولَّداً من النموذج. المنصّة توفّر **backends متعدّدة قابلة للاختيار**:
+
+| Backend | الأمان | المتطلبات | للاستخدام |
+|---------|:---:|---|---|
+| `subprocess` *(افتراضي)* | ⚠️ متوسط (blacklist) | لا شيء | محلي على جهازك |
+| `docker` | 🛡️ عالٍ (عزل كامل) | Docker daemon شغّال | النشر / الإنتاج |
+| `auto` | متغيّر | يحاول Docker، يقع على subprocess | المرونة |
+
+**التحكّم عبر env:**
+
+```bash
+SANDBOX_BACKEND=docker uvicorn backend.main:app --port 8000
+```
+
+**خصائص Docker backend** (كل تشغيل = container مؤقت معزول):
+- `--network=none` — لا اتصال خارجي
+- `--memory=256m --cpus=0.5 --pids-limit=64` — حدود موارد
+- `--read-only` + `--tmpfs=/tmp:size=64m` — نظام ملفات للقراءة
+- `--user=65534:65534` (nobody) — غير root
+- `--security-opt=no-new-privileges`
+- `--rm` + container name + `docker kill` على timeout
+- صورة افتراضية: `python:3.11-slim` (تتغير بـ `SANDBOX_DOCKER_IMAGE`)
+
+تبويب "المفاتيح" يعرض حالة الـ backend الحالي وما إذا كان معزولاً.
 
 ---
 
@@ -172,33 +243,49 @@ uvicorn backend.main:app --reload --port 8000
 ```
 ai-benchmark-platform/
 ├── backend/
-│   ├── providers/          # واجهة موحّدة لكل المزوّدين
-│   │   ├── base.py
+│   ├── providers/              # 9 مزوّدين + helper مشترك للـ retry
+│   │   ├── base.py             # ModelResponse + estimate_tokens_from_text
+│   │   ├── _http.py            # post_with_retry (backoff + Retry-After)
 │   │   ├── claude.py
 │   │   ├── openai.py
 │   │   ├── gemini.py
+│   │   ├── groq.py             # ⭐ جديد
+│   │   ├── mistral.py          # ⭐ جديد
+│   │   ├── cohere.py           # ⭐ جديد
+│   │   ├── xai.py              # ⭐ جديد
 │   │   ├── ollama.py
 │   │   └── openrouter.py
-│   ├── benchmarks/         # تعريف البنشماركات
+│   ├── benchmarks/             # 8 بنشماركات
 │   │   ├── base.py
 │   │   ├── humaneval.py
 │   │   ├── gsm8k.py
 │   │   ├── mmlu.py
 │   │   ├── arabic_mmlu.py
-│   │   ├── saudi_legal.py  # ⭐ مخصّص
+│   │   ├── saudi_legal.py      # ⭐ 150 سؤال
+│   │   ├── saudi_dialects.py   # ⭐ جديد
+│   │   ├── tool_use.py         # ⭐ جديد
 │   │   └── llm_judge.py
-│   ├── datasets/           # بيانات الاختبار (JSON)
-│   ├── sandbox.py          # تشغيل الكود بأمان
-│   ├── pricing.py          # أسعار المزوّدين
-│   ├── runner.py           # محرّك التشغيل + SSE
-│   ├── db.py               # SQLite
-│   └── main.py             # FastAPI
+│   ├── sandbox/                # ⭐ صار package
+│   │   ├── __init__.py         # factory: subprocess | docker | auto
+│   │   ├── base.py             # SandboxResult + extract_python_code
+│   │   ├── subprocess_runner.py
+│   │   └── docker_runner.py    # عزل قوي للنشر
+│   ├── datasets/               # بيانات الاختبار (JSON)
+│   ├── pricing.py              # أسعار 33+ نموذج لـ 9 مزوّدين
+│   ├── runner.py               # محرّك التشغيل + SSE + cache + budget
+│   ├── db.py                   # SQLite + Wilson CI + Head-to-Head
+│   └── main.py                 # FastAPI: 13 endpoint
 ├── frontend/
-│   ├── index.html
-│   ├── app.js
-│   └── styles.css
-├── tests/
-├── .env.example
+│   ├── index.html              # واجهة RTL responsive
+│   ├── app.js                  # vanilla JS — لا build step
+│   └── styles.css              # dark/light theme + mobile
+├── .github/
+│   ├── workflows/ci.yml        # ruff + pytest على 3 إصدارات Python
+│   ├── ISSUE_TEMPLATE/         # bug، feature، saudi_question
+│   └── PULL_REQUEST_TEMPLATE.md
+├── tests/                      # 25 اختبار + 1 Docker e2e opt-in
+├── pyproject.toml              # ruff + pytest config
+├── CONTRIBUTING.md
 ├── LICENSE
 └── requirements.txt
 ```
@@ -210,22 +297,74 @@ sequenceDiagram
     participant U as المستخدم
     participant F as Frontend
     participant B as Backend (FastAPI)
+    participant C as Cache (SQLite)
     participant P as Provider API
     participant S as Sandbox
-    participant D as SQLite
+    participant D as SQLite Results
 
-    U->>F: اختر بنشمارك + نماذج
+    U->>F: اختر بنشمارك + نماذج + فلاتر
+    F->>B: POST /api/estimate (تقدير قبل التشغيل)
+    B-->>F: التكلفة المتوقّعة
     F->>B: POST /api/run
-    B->>P: استدعاء النموذج
-    P-->>B: استجابة
-    opt كود (HumanEval)
-        B->>S: تنفيذ في sandbox
-        S-->>B: نتيجة
+    loop لكل مسألة × نموذج
+        B->>C: فحص cache
+        alt cache hit
+            C-->>B: استجابة محفوظة (صفر تكلفة)
+        else cache miss
+            B->>P: استدعاء النموذج (مع retry+backoff)
+            P-->>B: استجابة
+            B->>C: حفظ في cache
+        end
+        opt كود (HumanEval)
+            B->>S: تنفيذ في sandbox
+            S-->>B: نتيجة
+        end
+        B->>D: حفظ النتيجة
+        B-->>F: SSE event (progress)
+        opt تجاوز الميزانية
+            B-->>F: SSE event (budget_exceeded)
+        end
     end
-    B->>D: حفظ
-    B-->>F: SSE stream
-    F-->>U: عرض لحظي
+    B-->>F: SSE event (done)
+    F-->>U: عرض H2H matrix + ملخّص + CI
 ```
+
+---
+
+## 📡 مرجع الـ API
+
+| الـ endpoint | الوظيفة |
+|---|---|
+| `GET /api/providers` | قائمة المزوّدين والنماذج المتاحة لكل واحد |
+| `GET /api/benchmarks` | قائمة البنشماركات (مع categories و difficulties و count) |
+| `GET /api/benchmarks/{id}/categories` | تصنيفات بنشمارك محدّد |
+| `GET /api/benchmarks/{id}/difficulties` | مستويات الصعوبة المتوفّرة |
+| `GET /api/pricing` | أسعار كل النماذج |
+| `GET /api/ollama/models?base_url=…` | النماذج المحلية المثبّتة في Ollama |
+| `GET /api/sandbox/status` | الـ sandbox backend الحالي + هل Docker متاح |
+| `POST /api/estimate` | تقدير تكلفة التشغيل قبل الانطلاق |
+| `POST /api/run` | تشغيل بنشمارك (SSE stream) |
+| `GET /api/runs` | تاريخ كل الـ runs |
+| `GET /api/runs/{id}` | تفاصيل run + Wilson CI لكل نموذج |
+| `GET /api/runs/{id}/h2h` | مصفوفة Head-to-Head |
+| `GET /api/runs/{id}/export?format=json\|csv` | تصدير نتائج |
+| `DELETE /api/runs/{id}` | حذف run |
+| `GET /api/cache/stats` | إحصائيات الـ cache |
+| `DELETE /api/cache` | مسح الـ cache |
+
+---
+
+## ⚙️ متغيّرات البيئة
+
+| المتغيّر | الافتراضي | الوصف |
+|---------|-----------|--------|
+| `ALLOWED_ORIGINS` | `http://localhost:8000,http://127.0.0.1:8000` | CORS origins المسموحة (مفصولة بفاصلة) |
+| `SANDBOX_BACKEND` | `subprocess` | `subprocess` / `docker` / `auto` |
+| `SANDBOX_DOCKER_IMAGE` | `python:3.11-slim` | صورة Docker للـ sandbox |
+| `SANDBOX_DOCKER_MEMORY` | `256m` | حدّ الذاكرة |
+| `SANDBOX_DOCKER_CPUS` | `0.5` | حدّ المعالج |
+| `SANDBOX_DOCKER_PIDS` | `64` | حدّ العمليات |
+| `RUN_DOCKER_TESTS` | `0` | تشغيل اختبارات Docker e2e (يحتاج daemon شغّال) |
 
 ---
 
@@ -242,7 +381,15 @@ class MyBenchmark(BaseBenchmark):
     dataset_file = "my_data.json"
 
     def _parse_problem(self, raw):
-        return Problem(id=raw["id"], prompt=raw["q"], reference=raw["a"])
+        return Problem(
+            id=raw["id"],
+            prompt=raw["q"],
+            reference=raw["a"],
+            metadata={
+                "category": raw.get("category", "general"),
+                "difficulty": raw.get("difficulty", "متوسط"),
+            },
+        )
 
     def build_prompt(self, problem):
         return problem.prompt
@@ -259,40 +406,24 @@ class MyBenchmark(BaseBenchmark):
 
 **2.** أضف داتاست في `backend/datasets/my_data.json`
 
-**3.** سجّله في `backend/benchmarks/__init__.py`
+**3.** سجّله في `backend/benchmarks/__init__.py`:
+
+```python
+from backend.benchmarks.my_benchmark import MyBenchmark
+BENCHMARKS["my_benchmark"] = MyBenchmark
+```
+
+**4.** أضف اختبار في `tests/test_basic.py` (اختياري لكن مستحسن)
+
+البنشمارك سيظهر تلقائياً في الواجهة مع فلاتر التصنيف والصعوبة إذا وضعتها في الـ metadata.
 
 ---
 
 ## 🔒 الأمان والخصوصية
 
-### Sandbox الكود
-بنشمارك `HumanEval` ينفّذ كود مولَّد من النموذج في **sandbox قابل للاختيار**:
-
-| Backend | الأمان | المتطلبات | للاستخدام |
-|---------|:---:|---|---|
-| `subprocess` (افتراضي) | ⚠️ متوسط | لا شيء | محلي على جهازك فقط |
-| `docker` ⭐ | 🛡️ عالٍ | Docker daemon شغّال | للنشر/الإنتاج |
-| `auto` | متغيّر | يحاول Docker، يقع على subprocess | المرونة |
-
-التحكّم عبر env:
-```bash
-SANDBOX_BACKEND=docker uvicorn backend.main:app --port 8000
-```
-
-**خصائص Docker backend:**
-- `--network=none` (لا اتصال خارجي)
-- `--memory=256m --cpus=0.5 --pids-limit=64` (حدود موارد)
-- `--read-only --user=65534:65534` (نظام ملفات للقراءة، مستخدم غير root)
-- `--security-opt=no-new-privileges`
-- `--rm` (يُحذَف تلقائياً)
-- صورة افتراضية: `python:3.11-slim` (قابلة للتغيير بـ `SANDBOX_DOCKER_IMAGE`)
-
-تبويب "المفاتيح" في الواجهة يعرض الـ backend الحالي وما إذا كان معزولاً.
-
 ### المفاتيح
-- محفوظة في `localStorage` المتصفح
-- تُرسَل لسيرفرك المحلي في كل طلب كـ header
-- الخادم يمرّرها لمزوّد النموذج بدون تخزين
+- محفوظة في `localStorage` المتصفح فقط
+- تُرسَل لسيرفرك المحلي كـ header، يمرّرها للمزوّد بدون تخزين
 - **ما في طرف ثالث** يوصل لها
 
 ### الخصوصية
@@ -300,58 +431,83 @@ SANDBOX_BACKEND=docker uvicorn backend.main:app --port 8000
 - كل البيانات محلية على جهازك (SQLite + localStorage)
 - كود مفتوح المصدر — راجع بنفسك
 
+### للنشر العام
+1. ضع `SANDBOX_BACKEND=docker` لعزل تنفيذ الكود
+2. قيّد `ALLOWED_ORIGINS` لـ domain موقعك فقط
+3. ضع reverse proxy (Nginx/Caddy) مع HTTPS + authentication أمام السيرفر
+4. (اختياري) شغّل المنصّة داخل container بنفسها
+
 ---
 
 ## ⚠️ حدود المنصة
 
-- **مصمّمة للاستخدام المحلي** — ليست للنشر على السيرفرات العامة بدون auth
-- **Sandbox بسيط** — ما يحمي من هجمات متقدمة؛ للإنتاج استخدم Docker أو gVisor
-- **البنشمارك السعودي 30 سؤال فقط** — نطاق تجريبي، محتاج توسيع
-- **لا يوجد web UI عام** لمقارنة النماذج — كل واحد يشغّلها محلياً
+- **لا توفّر authentication داخلي** — للنشر العام يلزم تركيب auth أمامها
+- **عدد الأسئلة في بعض البنشماركات صغير** (HumanEval 10، LLM-Judge 8) — مناسب للتجربة، لكن للنتائج الدالّة إحصائياً ينصح بـ n ≥ 30 (الواجهة تعرض **فاصل ثقة 95%** ليخبرك متى الـ n قليل)
+- **التسعير قد يتغيّر** — راجع `backend/pricing.py` ويحدَّث دورياً
+- **اختبارات Docker لا تُشغَّل في CI افتراضياً** (تحتاج daemon شغّال، تُفعَّل بـ `RUN_DOCKER_TESTS=1`)
 
 ---
 
 ## 🗺️ خريطة الطريق
 
-- [x] تصدير النتائج كـ CSV / JSON
-- [x] حدّ تكلفة (Budget cap) لإيقاف التشغيل تلقائياً
-- [x] Cache للاستجابات
-- [x] فلتر بالتصنيفات
-- [x] فلتر بمستوى الصعوبة (سهل / متوسط / صعب)
-- [x] Dark / Light theme
+### ✅ مُنجز (8 دفعات مدموجة)
+
+<details>
+<summary><b>التفاصيل</b></summary>
+
 - [x] CI (GitHub Actions: ruff + pytest على Python 3.10/3.11/3.12)
-- [x] توسيع البنشمارك السعودي إلى 100 سؤال + إضافة تصنيف الإثبات والشركات
-- [x] Head-to-Head matrix للمقارنة الزوجية
-- [x] Diff view (مقارنة جنباً إلى جنب للإجابات على نفس السؤال)
-- [x] Responsive للجوال
-- [x] دعم Groq، Mistral، Cohere، xAI
-- [x] تقدير التكلفة قبل التشغيل (POST /api/estimate)
+- [x] CORS مقيّد + قابل للتخصيص
+- [x] Cache للاستجابات في SQLite
+- [x] حدّ تكلفة (Budget cap)
+- [x] فلتر بالتصنيفات + مستوى الصعوبة
+- [x] تصدير النتائج CSV / JSON
+- [x] Dark / Light theme
+- [x] دعم Groq، Mistral، Cohere، xAI (+33 نموذج)
+- [x] تقدير التكلفة قبل التشغيل
+- [x] Head-to-Head matrix
+- [x] Diff view (مقارنة جنباً إلى جنب)
+- [x] Mobile responsive
 - [x] Sandbox آمن بـ Docker (network=none + resource limits + non-root)
-- [x] بنشمارك Tool Use (Function calling - JSON parsing)
+- [x] بنشمارك Tool Use (Function Calling - JSON parsing)
 - [x] بنشمارك اللهجات السعودية (نجدية، حجازية، جنوبية، شرقية)
-- [x] توسيع البنشمارك السعودي إلى 150 سؤال (كل تصنيف ≥ 10 أسئلة)
-- [x] فواصل ثقة 95% (Wilson) على الدقة
-- [x] جدول ملخّص قابل للترتيب + نسخ كـ Markdown
+- [x] فواصل ثقة 95% (Wilson)
+- [x] جدول ملخّص قابل للترتيب + نسخ Markdown
 - [x] النقر على نقطة الحالة يفتح تفاصيل المسألة
+- [x] توسيع البنشمارك السعودي 30 → 150 سؤال (كل تصنيف ≥ 10)
+
+</details>
+
+### 🔜 المخطّط له
+
 - [ ] توسيع البنشمارك السعودي إلى 200+ سؤال
-- [ ] Docker Compose للنشر الذاتي + Sandbox آمن (Docker / Pyodide)
+- [ ] بنشمارك RAG (مع نصوص الأنظمة السعودية)
+- [ ] بنشمارك Multi-turn (محاكاة مستشار)
+- [ ] لهجات عربية أوسع (خليجي، مصري، مغربي، شامي)
+- [ ] Docker Compose للنشر الذاتي بضغطة واحدة
 - [ ] تصدير النتائج كـ PDF
-- [ ] دمج RAG في التقييم
-- [ ] بنشمارك للّهجات العربية (خليجي، مصري، مغربي)
-- [ ] Head-to-Head matrix + diff view
+- [ ] Public leaderboard (اختياري — رفع نتائج من المستخدمين)
+- [ ] تكامل HuggingFace Spaces
 
 ---
 
 ## 🤝 المساهمة
 
-المشروع مفتوح للمساهمات. الأولويات:
+المشروع مفتوح للمساهمات. الأولويات الحالية:
 
-- **توسيع البنشمارك السعودي** بأسئلة موثّقة من نصوص الأنظمة والفتاوى المعتمدة
-- **بنشماركات عربية إضافية** (لغة، أدب، تاريخ إسلامي)
-- **دعم مزوّدين جدد**
-- **تحسينات الواجهة** (dark mode، responsive للجوال)
+| الأولوية | المجال |
+|---|---|
+| 🔴 عالية | **توسيع البنشمارك السعودي** بأسئلة موثّقة من نصوص الأنظمة والفتاوى المعتمدة |
+| 🟡 متوسطة | **بنشماركات عربية إضافية** (نحو، إملاء، أدب، تاريخ إسلامي) |
+| 🟡 متوسطة | **توسيع داتاست Tool Use** بحالات متقدمة (parallel tool calls، nested) |
+| 🟢 منخفضة | دعم مزوّدين جدد (AWS Bedrock، Azure OpenAI، Vertex AI) |
 
-افتح Issue أو Pull Request 👋
+راجع [CONTRIBUTING.md](CONTRIBUTING.md) للتفاصيل، وافتح Issue أو Pull Request 👋
+
+### للمساهمين في المحتوى السعودي
+
+- استخدم قالب issue `🇸🇦 إضافة سؤال للبنشمارك السعودي`
+- كل سؤال **يجب** أن يحمل مصدراً موثّقاً (رقم مادة نظامية، أو حديث في صحيح معروف، أو فتوى من جهة معتمدة، أو قرار مجمع فقهي)
+- صياغة محايدة بدون اجتهادات فردية غير موثّقة
 
 ---
 
