@@ -30,14 +30,17 @@ class OpenAIProvider(BaseProvider):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        # موديلات o1 لا تقبل رسالة system، فندمجها في بداية رسالة المستخدم
+        is_o1 = model.startswith("o1")
         messages = []
-        if system:
+        if system and not is_o1:
             messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+        user_content = f"{system}\n\n{prompt}" if (system and is_o1) else prompt
+        messages.append({"role": "user", "content": user_content})
 
         body: dict = {"model": model, "messages": messages}
         # موديلات o1 ما تقبل temperature ولها max_completion_tokens
-        if model.startswith("o1"):
+        if is_o1:
             body["max_completion_tokens"] = max_tokens
         else:
             body["max_tokens"] = max_tokens
