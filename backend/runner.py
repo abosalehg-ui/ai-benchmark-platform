@@ -1,14 +1,25 @@
 """محرّك تشغيل البنشمارك مع تتبّع التقدّم."""
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 from dataclasses import dataclass, field
-from typing import AsyncIterator
+from typing import AsyncIterator, Awaitable, Callable
 
 from backend import db
 from backend.benchmarks import make_benchmark
 from backend.providers import make_provider
 from backend.providers.base import ModelResponse
+
+
+def _get_concurrency() -> int:
+    """مستوى التزامن لكل نموذج (عدد الاستدعاءات المتوازية). قابل للضبط عبر env."""
+    try:
+        val = int(os.getenv("RUN_CONCURRENCY", "5"))
+    except ValueError:
+        return 5
+    return max(1, min(val, 32))
 
 
 @dataclass
@@ -81,8 +92,15 @@ async def _complete_with_cache(provider, target: ModelTarget, prompt: str, syste
     return resp, False
 
 
-async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
-    """يشغّل البنشمارك ويُنتج أحداث تقدّم لحظية (async generator)."""
+async def run_benchmark(
+    req: RunRequest,
+    is_disconnected: Callable[[], Awaitable[bool]] | None = None,
+) -> AsyncIterator[ProgressEvent]:
+    """يشغّل البنشمارك ويُنتج أحداث تقدّم لحظية (async generator).
+
+    ``is_disconnected``: دالة اختيارية تُرجع True إذا أغلق العميل الاتصال،
+    فنوقف التشغيل ونلغي الاستدعاءات المعلّقة بدل إنفاق تكلفة بلا فائدة.
+    """
     benchmark = make_benchmark(req.benchmark)
     all_problems = benchmark.load()
     filtered = _filter_problems(all_problems, req.categories, req.difficulties)
@@ -125,77 +143,106 @@ async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
 
     grand_total_cost = 0.0
     budget_exceeded = False
+    disconnected = False
+    concurrency = _get_concurrency()
 
     try:
         for target in req.targets:
-            if budget_exceeded:
+            if budget_exceeded or disconnected:
                 break
             provider = make_provider(target.provider, target.api_key, target.base_url)
             n_correct = 0
+            completed = 0
             total_cost = 0.0
             total_latency = 0.0
 
-            for i, problem in enumerate(problems):
-                prompt = benchmark.build_prompt(problem)
-                response, cache_hit = await _complete_with_cache(
-                    provider, target, prompt, benchmark.system_prompt, req.use_cache
-                )
-                score = await benchmark.evaluate(problem, response, judge_provider)
+            # ننفّذ مسائل النموذج بالتوازي بحدّ Semaphore لاحترام rate limits.
+            sem = asyncio.Semaphore(concurrency)
 
-                if score.correct:
-                    n_correct += 1
-                total_cost += response.cost_usd
-                total_latency += response.latency_ms
-                grand_total_cost += response.cost_usd
+            # نربط متغيّرات الحلقة كوسائط افتراضية لتفادي late-binding
+            async def _process(problem, *, provider=provider, target=target, sem=sem):
+                async with sem:
+                    prompt = benchmark.build_prompt(problem)
+                    response, cache_hit = await _complete_with_cache(
+                        provider, target, prompt, benchmark.system_prompt, req.use_cache
+                    )
+                    score = await benchmark.evaluate(problem, response, judge_provider)
+                    return problem, response, score, cache_hit
 
-                db.insert_result(
-                    run_id=run_id,
-                    provider=target.provider,
-                    model=target.model,
-                    problem_id=problem.id,
-                    correct=score.correct,
-                    raw_score=score.raw_score,
-                    latency_ms=response.latency_ms,
-                    input_tokens=response.input_tokens,
-                    output_tokens=response.output_tokens,
-                    cost_usd=response.cost_usd,
-                    response_text=score.model_response,
-                    judgment=score.judgment,
-                    error=score.error or response.error,
-                )
+            tasks = [asyncio.create_task(_process(p)) for p in problems]
+            try:
+                for fut in asyncio.as_completed(tasks):
+                    problem, response, score, cache_hit = await fut
+                    completed += 1
+                    # تكلفة المسألة = تكلفة النموذج + تكلفة الحَكَم (إن وُجد)
+                    call_cost = response.cost_usd + score.judge_cost_usd
 
-                yield ProgressEvent(
-                    event="progress",
-                    run_id=run_id,
-                    payload={
-                        "provider": target.provider,
-                        "model": target.model,
-                        "problem_id": problem.id,
-                        "i": i + 1,
-                        "n": n,
-                        "correct": score.correct,
-                        "running_accuracy": n_correct / (i + 1),
-                        "running_cost": round(total_cost, 6),
-                        "grand_total_cost": round(grand_total_cost, 6),
-                        "latency_ms": round(response.latency_ms, 1),
-                        "cache_hit": cache_hit,
-                        "error": score.error or response.error,
-                    },
-                )
+                    if score.correct:
+                        n_correct += 1
+                    total_cost += call_cost
+                    total_latency += response.latency_ms
+                    grand_total_cost += call_cost
 
-                # فحص الميزانية بعد كل استدعاء
-                if req.budget_usd is not None and grand_total_cost >= req.budget_usd:
-                    budget_exceeded = True
+                    db.insert_result(
+                        run_id=run_id,
+                        provider=target.provider,
+                        model=target.model,
+                        problem_id=problem.id,
+                        correct=score.correct,
+                        raw_score=score.raw_score,
+                        latency_ms=response.latency_ms,
+                        input_tokens=response.input_tokens,
+                        output_tokens=response.output_tokens,
+                        cost_usd=call_cost,
+                        response_text=score.model_response,
+                        judgment=score.judgment,
+                        error=score.error or response.error,
+                    )
+
                     yield ProgressEvent(
-                        event="budget_exceeded",
+                        event="progress",
                         run_id=run_id,
                         payload={
-                            "budget_usd": req.budget_usd,
-                            "spent_usd": round(grand_total_cost, 6),
-                            "message": "تم تجاوز الميزانية المحدّدة. توقّف التشغيل.",
+                            "provider": target.provider,
+                            "model": target.model,
+                            "problem_id": problem.id,
+                            "i": completed,
+                            "n": n,
+                            "correct": score.correct,
+                            "running_accuracy": n_correct / completed,
+                            "running_cost": round(total_cost, 6),
+                            "grand_total_cost": round(grand_total_cost, 6),
+                            "latency_ms": round(response.latency_ms, 1),
+                            "cache_hit": cache_hit,
+                            "error": score.error or response.error,
                         },
                     )
-                    break
+
+                    # فحص الميزانية بعد كل استدعاء (تقريبي: قد يتجاوز بمقدار
+                    # الاستدعاءات المتوازية المتبقّية قيد التنفيذ)
+                    if req.budget_usd is not None and grand_total_cost >= req.budget_usd:
+                        budget_exceeded = True
+                        yield ProgressEvent(
+                            event="budget_exceeded",
+                            run_id=run_id,
+                            payload={
+                                "budget_usd": req.budget_usd,
+                                "spent_usd": round(grand_total_cost, 6),
+                                "message": "تم تجاوز الميزانية المحدّدة. توقّف التشغيل.",
+                            },
+                        )
+                        break
+
+                    # لو أغلق العميل الاتصال نوقف ونلغي الباقي (لا نُنفق بلا فائدة)
+                    if is_disconnected is not None and await is_disconnected():
+                        disconnected = True
+                        break
+            finally:
+                # إلغاء أي استدعاءات معلّقة وابتلاع استثناءات الإلغاء
+                for tk in tasks:
+                    if not tk.done():
+                        tk.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
 
             yield ProgressEvent(
                 event="model_done",
@@ -203,18 +250,27 @@ async def run_benchmark(req: RunRequest) -> AsyncIterator[ProgressEvent]:
                 payload={
                     "provider": target.provider,
                     "model": target.model,
-                    "accuracy": n_correct / max(n, 1),
+                    "accuracy": n_correct / max(completed, 1),
                     "n_correct": n_correct,
-                    "n_total": n,
+                    "n_total": completed,
                     "total_cost": round(total_cost, 6),
-                    "avg_latency_ms": round(total_latency / max(n, 1), 1),
+                    "avg_latency_ms": round(total_latency / max(completed, 1), 1),
                 },
             )
 
-        final_status = "aborted_budget" if budget_exceeded else "completed"
+        if disconnected:
+            final_status = "aborted_disconnect"
+        elif budget_exceeded:
+            final_status = "aborted_budget"
+        else:
+            final_status = "completed"
         db.finish_run(run_id, final_status)
-        yield ProgressEvent(event="done", run_id=run_id, payload={"status": final_status})
+        if not disconnected:
+            yield ProgressEvent(event="done", run_id=run_id, payload={"status": final_status})
 
+    except asyncio.CancelledError:
+        db.finish_run(run_id, "aborted_disconnect")
+        raise
     except Exception as e:
         db.finish_run(run_id, "failed")
         yield ProgressEvent(

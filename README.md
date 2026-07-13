@@ -359,11 +359,15 @@ sequenceDiagram
 | المتغيّر | الافتراضي | الوصف |
 |---------|-----------|--------|
 | `ALLOWED_ORIGINS` | `http://localhost:8000,http://127.0.0.1:8000` | CORS origins المسموحة (مفصولة بفاصلة) |
+| `RUN_CONCURRENCY` | `5` | عدد الاستدعاءات المتوازية لكل نموذج (1–32) |
 | `SANDBOX_BACKEND` | `subprocess` | `subprocess` / `docker` / `auto` |
 | `SANDBOX_DOCKER_IMAGE` | `python:3.11-slim` | صورة Docker للـ sandbox |
 | `SANDBOX_DOCKER_MEMORY` | `256m` | حدّ الذاكرة |
 | `SANDBOX_DOCKER_CPUS` | `0.5` | حدّ المعالج |
 | `SANDBOX_DOCKER_PIDS` | `64` | حدّ العمليات |
+| `SANDBOX_SUBPROCESS_MEMORY_MB` | `512` | حدّ ذاكرة الـ subprocess sandbox (POSIX) |
+| `SANDBOX_SUBPROCESS_CPU_SECONDS` | `15` | حدّ زمن المعالج للـ subprocess sandbox (POSIX) |
+| `SANDBOX_SUBPROCESS_FSIZE_MB` | `10` | أقصى حجم ملف يكتبه الـ subprocess sandbox (POSIX) |
 | `RUN_DOCKER_TESTS` | `0` | تشغيل اختبارات Docker e2e (يحتاج daemon شغّال) |
 
 ---

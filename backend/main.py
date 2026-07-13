@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,7 +26,13 @@ from backend.pricing import PRICING
 ROOT = Path(__file__).parent.parent
 FRONTEND_DIR = ROOT / "frontend"
 
-app = FastAPI(title="AI Benchmark Platform", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init_db()
+    yield
+
+
+app = FastAPI(title="AI Benchmark Platform", version="0.1.0", lifespan=lifespan)
 
 # المنصة مصمّمة للاستخدام المحلي. لو احتجت توسيع origins حدّد ALLOWED_ORIGINS كـ env.
 _default_origins = "http://localhost:8000,http://127.0.0.1:8000"
@@ -36,11 +43,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
 )
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    db.init_db()
 
 
 # ================== المسارات API ==================
@@ -175,7 +177,7 @@ def estimate_cost(req: EstimateRequestBody):
 
 
 @app.post("/api/run")
-async def post_run(req: RunRequestBody):
+async def post_run(req: RunRequestBody, request: Request):
     """تشغيل بنشمارك مع streaming لحظي عبر SSE."""
     if req.benchmark not in BENCHMARKS:
         raise HTTPException(404, f"بنشمارك غير معروف: {req.benchmark}")
@@ -213,7 +215,7 @@ async def post_run(req: RunRequestBody):
     )
 
     async def stream():
-        async for ev in run_benchmark(run_req):
+        async for ev in run_benchmark(run_req, is_disconnected=request.is_disconnected):
             yield event_to_sse(ev)
 
     return StreamingResponse(

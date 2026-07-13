@@ -2,6 +2,9 @@
 
 أبسط backend ولا يحتاج تبعيات خارجية، لكنه أقل أماناً.
 الـ blacklist سهلة التجاوز نظرياً، فيُنصح بـ Docker للنشر.
+
+نضيف حدود موارد على أنظمة POSIX (ذاكرة، CPU، حجم ملفات، عدد عمليات)
+عبر ``resource.setrlimit`` كطبقة دفاع ثانية بجانب مهلة الـ timeout.
 """
 from __future__ import annotations
 
@@ -11,6 +14,31 @@ import sys
 import tempfile
 
 from backend.sandbox.base import SandboxResult, is_code_safe
+
+try:
+    import resource  # POSIX فقط
+except ImportError:  # Windows
+    resource = None
+
+# حدود الموارد (قابلة للضبط عبر env)
+_MEM_BYTES = int(os.getenv("SANDBOX_SUBPROCESS_MEMORY_MB", "512")) * 1024 * 1024
+_CPU_SECONDS = int(os.getenv("SANDBOX_SUBPROCESS_CPU_SECONDS", "15"))
+_FSIZE_BYTES = int(os.getenv("SANDBOX_SUBPROCESS_FSIZE_MB", "10")) * 1024 * 1024
+
+
+def _apply_rlimits() -> None:
+    """يُطبَّق في العملية الابنة قبل exec لتقييد مواردها."""
+    if resource is None:
+        return
+    for res, limit in (
+        (resource.RLIMIT_AS, _MEM_BYTES),      # مساحة العنونة (ذاكرة)
+        (resource.RLIMIT_CPU, _CPU_SECONDS),   # زمن المعالج
+        (resource.RLIMIT_FSIZE, _FSIZE_BYTES), # أقصى حجم ملف يُكتب
+    ):
+        try:
+            resource.setrlimit(res, (limit, limit))
+        except (ValueError, OSError):
+            pass
 
 
 def run(
@@ -44,6 +72,9 @@ def run(
                 timeout=timeout,
                 cwd=tmpdir,
                 env={"PATH": os.environ.get("PATH", ""), "PYTHONIOENCODING": "utf-8"},
+                # حدود موارد + جلسة جديدة (يمنع الوصول لـ terminal الأب)
+                preexec_fn=_apply_rlimits if resource is not None else None,
+                start_new_session=resource is not None,
             )
             return SandboxResult(
                 passed=result.returncode == 0,

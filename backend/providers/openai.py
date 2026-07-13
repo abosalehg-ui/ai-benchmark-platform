@@ -1,13 +1,10 @@
 """مزود OpenAI."""
 from __future__ import annotations
 
-import httpx
-
-from backend.providers._http import post_with_retry
-from backend.providers.base import BaseProvider, ModelResponse, measure_latency
+from backend.providers.openai_compatible import OpenAICompatibleProvider
 
 
-class OpenAIProvider(BaseProvider):
+class OpenAIProvider(OpenAICompatibleProvider):
     name = "openai"
     available_models = [
         "gpt-4o",
@@ -17,61 +14,21 @@ class OpenAIProvider(BaseProvider):
         "o1-mini",
     ]
     API_URL = "https://api.openai.com/v1/chat/completions"
+    DEFAULT_TIMEOUT = 180.0
 
-    async def complete(
-        self,
-        prompt: str,
-        model: str,
-        max_tokens: int = 1024,
-        temperature: float = 0.0,
-        system: str | None = None,
-    ) -> ModelResponse:
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+    @staticmethod
+    def _is_o1(model: str) -> bool:
+        return model.startswith("o1")
+
+    def _build_messages(self, prompt, system, model):
         # موديلات o1 لا تقبل رسالة system، فندمجها في بداية رسالة المستخدم
-        is_o1 = model.startswith("o1")
-        messages = []
-        if system and not is_o1:
-            messages.append({"role": "system", "content": system})
-        user_content = f"{system}\n\n{prompt}" if (system and is_o1) else prompt
-        messages.append({"role": "user", "content": user_content})
+        if self._is_o1(model):
+            content = f"{system}\n\n{prompt}" if system else prompt
+            return [{"role": "user", "content": content}]
+        return super()._build_messages(prompt, system, model)
 
-        body: dict = {"model": model, "messages": messages}
+    def _build_body(self, model, messages, max_tokens, temperature):
         # موديلات o1 ما تقبل temperature ولها max_completion_tokens
-        if is_o1:
-            body["max_completion_tokens"] = max_tokens
-        else:
-            body["max_tokens"] = max_tokens
-            body["temperature"] = temperature
-
-        with measure_latency() as t:
-            try:
-                r = await post_with_retry(self.API_URL, headers=headers, json=body, timeout=180.0)
-                data = r.json()
-            except httpx.HTTPStatusError as e:
-                return ModelResponse(
-                    text="",
-                    model_id=model,
-                    error=f"HTTP {e.response.status_code}: {e.response.text[:200]}",
-                )
-            except Exception as e:
-                return ModelResponse(
-                    text="", model_id=model, error=f"{type(e).__name__}: {e}"
-                )
-
-        text = data["choices"][0]["message"]["content"] or ""
-        usage = data.get("usage", {})
-        in_tok = usage.get("prompt_tokens", 0)
-        out_tok = usage.get("completion_tokens", 0)
-
-        return ModelResponse(
-            text=text,
-            input_tokens=in_tok,
-            output_tokens=out_tok,
-            latency_ms=t.elapsed_ms,
-            cost_usd=self.estimate_cost(model, in_tok, out_tok),
-            model_id=model,
-            raw=data,
-        )
+        if self._is_o1(model):
+            return {"model": model, "messages": messages, "max_completion_tokens": max_tokens}
+        return super()._build_body(model, messages, max_tokens, temperature)
