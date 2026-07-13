@@ -37,6 +37,9 @@ def wilson_interval(successes: int, n: int, z: float = 1.96) -> dict:
 def init_db() -> None:
     """إنشاء الجداول إذا لم تكن موجودة."""
     with get_conn() as conn:
+        # WAL يسمح بقراءات متزامنة أثناء الكتابة ويقلّل أخطاء القفل.
+        # journal_mode يُخزَّن في ملف القاعدة فيكفي ضبطه مرة واحدة.
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript("""
         CREATE TABLE IF NOT EXISTS runs (
             id TEXT PRIMARY KEY,
@@ -129,7 +132,8 @@ def cache_clear() -> int:
 
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    # timeout=30 يمنح مهلة أطول قبل رفع "database is locked" تحت التزامن
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     try:
         yield conn

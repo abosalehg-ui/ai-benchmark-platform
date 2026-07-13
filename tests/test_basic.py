@@ -82,7 +82,7 @@ def test_benchmarks_load():
         assert p.prompt
 
 
-def test_saudi_legal_has_100_questions():
+def test_saudi_legal_has_150_questions():
     """البنشمارك السعودي المخصص يحتوي 150 سؤال على الأقل."""
     from backend.benchmarks import make_benchmark
 
@@ -254,6 +254,54 @@ def test_mmlu_extract_letter():
 
     assert MMLUBenchmark.extract_letter("Answer: B") == "B"
     assert MMLUBenchmark.extract_letter("I think C is correct") == "C"
+
+
+def test_openai_o1_omits_system_message():
+    """نماذج o1 لا تستقبل رسالة system منفصلة — تُدمج في رسالة المستخدم."""
+    import json
+
+    from backend.providers.openai import OpenAIProvider
+
+    captured = {}
+
+    class _FakeResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            }
+
+    async def _fake_post(url, *, headers=None, json=None, timeout=120.0):  # noqa: A002
+        captured["body"] = json
+        return _FakeResp()
+
+    import backend.providers.openai as oai
+    orig = oai.post_with_retry
+    oai.post_with_retry = _fake_post
+    try:
+        import asyncio
+
+        p = OpenAIProvider(api_key="x")
+        # نموذج o1: لا رسالة system، والنظام مدموج في المستخدم، وبلا temperature
+        asyncio.run(p.complete("سؤال", model="o1-mini", system="أنت خبير"))
+        body = captured["body"]
+        roles = [m["role"] for m in body["messages"]]
+        assert "system" not in roles, "o1 يجب ألا يستقبل رسالة system"
+        assert "أنت خبير" in body["messages"][0]["content"]
+        assert "temperature" not in body
+        assert "max_completion_tokens" in body
+
+        # نموذج عادي: رسالة system منفصلة + temperature
+        asyncio.run(p.complete("سؤال", model="gpt-4o", system="أنت خبير"))
+        body2 = captured["body"]
+        assert body2["messages"][0]["role"] == "system"
+        assert "temperature" in body2
+        _ = json  # للتوافق مع linter
+    finally:
+        oai.post_with_retry = orig
 
 
 def test_tool_use_benchmark_loads_and_evaluates():
@@ -502,7 +550,7 @@ if __name__ == "__main__":
         test_estimate_tokens_from_text,
         test_estimate_endpoint_logic,
         test_benchmarks_load,
-        test_saudi_legal_has_100_questions,
+        test_saudi_legal_has_150_questions,
         test_saudi_legal_filters,
         test_get_benchmark_difficulties,
         test_sandbox_runs_simple_code,

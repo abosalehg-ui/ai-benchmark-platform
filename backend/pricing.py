@@ -66,8 +66,3 @@ def get_price(provider: str, model: str) -> dict[str, float] | None:
     """ارجع سعر النموذج إذا كان معروفاً."""
     provider_prices = PRICING.get(provider, {})
     return provider_prices.get(model)
-
-
-def list_models(provider: str) -> list[str]:
-    """قائمة بالنماذج المتاحة للمزود."""
-    return list(PRICING.get(provider, {}).keys())

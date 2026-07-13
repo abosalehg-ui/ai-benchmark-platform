@@ -1,6 +1,8 @@
 """بنشمارك HumanEval — تقييم البرمجة بتشغيل كود فعلي."""
 from __future__ import annotations
 
+import asyncio
+
 from backend.benchmarks.base import BaseBenchmark, Problem, Score
 from backend.providers.base import BaseProvider, ModelResponse
 from backend.sandbox import extract_python_code, run_python_code
@@ -61,7 +63,9 @@ class HumanEvalBenchmark(BaseBenchmark):
             problem.reference["test"]
             + f"\ncheck({problem.reference['entry_point']})"
         )
-        result = run_python_code(code, test_code, timeout=10)
+        # نشغّل الـ sandbox المتزامن في thread منفصل حتى لا نحجب حلقة الأحداث
+        # (subprocess/docker قد يستغرق ثوانٍ ويجمّد الخادم بالكامل لولا ذلك)
+        result = await asyncio.to_thread(run_python_code, code, test_code, timeout=10)
 
         return Score(
             problem_id=problem.id,
