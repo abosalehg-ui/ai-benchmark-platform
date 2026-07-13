@@ -30,6 +30,7 @@ class Score:
     model_response: str = ""
     judgment: str = ""  # تفسير التقييم
     error: str | None = None
+    judge_cost_usd: float = 0.0  # تكلفة استدعاء الحَكَم (llm_judge) إن وُجد
 
 
 class BaseBenchmark(ABC):

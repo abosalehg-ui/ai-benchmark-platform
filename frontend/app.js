@@ -502,12 +502,12 @@ function renderLiveModels() {
     div.className = 'live-model';
     const dotsHtml = m.dots.map(d => {
       const label = d.kind === 'cache' ? 'cache hit' : (d.kind === 'correct' ? 'صحيح' : (d.kind === 'wrong' ? 'خطأ' : 'خطأ تشغيل'));
-      const title = `${d.pid || ''} — ${label} (${(d.latency || 0).toFixed(0)}ms) — انقر للتفاصيل`;
-      return `<div class="dot ${d.kind} dot-clickable" title="${title}" data-pid="${d.pid || ''}" data-provider="${m.provider}" data-model="${m.model}"></div>`;
+      const title = escapeHtml(`${d.pid || ''} — ${label} (${(d.latency || 0).toFixed(0)}ms) — انقر للتفاصيل`);
+      return `<div class="dot ${d.kind} dot-clickable" title="${title}" data-pid="${escapeHtml(d.pid || '')}" data-provider="${escapeHtml(m.provider)}" data-model="${escapeHtml(m.model)}"></div>`;
     }).join('');
     div.innerHTML = `
       <div class="live-model-header">
-        <span class="live-model-name">${m.provider} / ${m.model}</span>
+        <span class="live-model-name">${escapeHtml(m.provider)} / ${escapeHtml(m.model)}</span>
         <span class="live-model-stat">${acc}% • $${m.total_cost.toFixed(4)}${cachedNote}</span>
       </div>
       <div class="dot-grid">${dotsHtml}</div>
@@ -679,8 +679,8 @@ function renderSummaryTable() {
     const acc = (m.accuracy * 100).toFixed(1);
     const margin = ((m.ci_margin || 0) * 100).toFixed(1);
     return `<tr>
-      <td>${m.provider}</td>
-      <td>${m.model}</td>
+      <td>${escapeHtml(m.provider)}</td>
+      <td>${escapeHtml(m.model)}</td>
       <td class="score-cell">${acc}% <span class="ci">±${margin}</span></td>
       <td>${m.n_correct}/${m.n}</td>
       <td>$${(m.total_cost || 0).toFixed(4)}</td>
@@ -765,11 +765,11 @@ async function renderH2H(runId) {
     section.classList.remove('hidden');
 
     let html = '<table class="h2h-table"><thead><tr><th></th>';
-    models.forEach(m => { html += `<th>${m.model}</th>`; });
+    models.forEach(m => { html += `<th>${escapeHtml(m.model)}</th>`; });
     html += '</tr></thead><tbody>';
 
     matrix.forEach((row, i) => {
-      html += `<tr><th>${models[i].model}</th>`;
+      html += `<tr><th>${escapeHtml(models[i].model)}</th>`;
       row.forEach((cell, j) => {
         if (i === j) {
           html += '<td class="h2h-cell h2h-diag">—</td>';

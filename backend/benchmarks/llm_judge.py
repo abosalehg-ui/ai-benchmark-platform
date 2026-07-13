@@ -131,4 +131,5 @@ class LLMJudgeBenchmark(BaseBenchmark):
             raw_score=(score_value - 1) / 4.0,  # نطبّع لـ 0..1
             model_response=response.text,
             judgment=f"درجة الحَكَم: {score_value}/5 — {judge_response.text[:300]}",
+            judge_cost_usd=judge_response.cost_usd,
         )

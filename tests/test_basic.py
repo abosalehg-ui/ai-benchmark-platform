@@ -278,7 +278,7 @@ def test_openai_o1_omits_system_message():
         captured["body"] = json
         return _FakeResp()
 
-    import backend.providers.openai as oai
+    import backend.providers.openai_compatible as oai
     orig = oai.post_with_retry
     oai.post_with_retry = _fake_post
     try:
@@ -483,6 +483,103 @@ def test_head_to_head_returns_none_for_missing_run():
         db.DB_PATH = Path(tmp) / "test.db"
         db.init_db()
         assert db.head_to_head("nonexistent") is None
+
+
+def _make_fake_provider(delay=0.0, cost=0.0):
+    """مزوّد وهمي يرجّع الإجابة المرجعية دائماً — لاختبار الـ runner."""
+    from backend.providers.base import BaseProvider, ModelResponse
+
+    class _Fake(BaseProvider):
+        name = "fake"
+        available_models = ["fake-model"]
+        active = 0
+        max_active = 0
+
+        async def complete(self, prompt, model, max_tokens=1024, temperature=0.0, system=None):
+            import asyncio
+            type(self).active += 1
+            type(self).max_active = max(type(self).max_active, type(self).active)
+            if delay:
+                await asyncio.sleep(delay)
+            type(self).active -= 1
+            # نعيد "أ" لأن الداتاست السعودي إجاباته حروف عربية
+            return ModelResponse(text="الإجابة: أ", input_tokens=1, output_tokens=1, cost_usd=cost)
+
+    return _Fake
+
+
+def test_runner_runs_concurrently(monkeypatch, tmp_path):
+    """الـ runner ينفّذ مسائل النموذج بالتوازي بحدّ Semaphore."""
+    import asyncio
+
+    import backend.db as db
+    import backend.runner as runner
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.db")
+    db.init_db()
+    monkeypatch.setenv("RUN_CONCURRENCY", "4")
+
+    Fake = _make_fake_provider(delay=0.05)
+    monkeypatch.setattr(runner, "make_provider", lambda *a, **k: Fake(api_key=""))
+
+    req = runner.RunRequest(
+        benchmark="saudi_legal",
+        targets=[runner.ModelTarget(provider="fake", model="fake-model", api_key="")],
+        n_problems=8,
+        use_cache=False,
+    )
+
+    async def _drain():
+        events = []
+        async for ev in runner.run_benchmark(req):
+            events.append(ev)
+        return events
+
+    events = asyncio.run(_drain())
+    kinds = [e.event for e in events]
+    assert kinds[0] == "start"
+    assert kinds[-1] == "done"
+    assert kinds.count("progress") == 8
+    # لو التنفيذ تسلسلي لكان max_active=1؛ التوازي يجعله >1
+    assert Fake.max_active > 1, f"لم يحدث تزامن (max_active={Fake.max_active})"
+
+
+def test_runner_stops_on_disconnect(monkeypatch, tmp_path):
+    """الـ runner يوقف التشغيل فوراً عند انقطاع العميل."""
+    import asyncio
+
+    import backend.db as db
+    import backend.runner as runner
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.db")
+    db.init_db()
+    monkeypatch.setenv("RUN_CONCURRENCY", "2")
+
+    Fake = _make_fake_provider(delay=0.01)
+    monkeypatch.setattr(runner, "make_provider", lambda *a, **k: Fake(api_key=""))
+
+    req = runner.RunRequest(
+        benchmark="saudi_legal",
+        targets=[runner.ModelTarget(provider="fake", model="fake-model", api_key="")],
+        n_problems=20,
+        use_cache=False,
+    )
+
+    async def _always_disconnected():
+        return True
+
+    async def _drain():
+        events = []
+        async for ev in runner.run_benchmark(req, is_disconnected=_always_disconnected):
+            events.append(ev)
+        return events
+
+    events = asyncio.run(_drain())
+    # يجب أن يتوقّف قبل إكمال كل الـ 20 مسألة، وألا يُصدر حدث done (العميل مفصول)
+    assert sum(1 for e in events if e.event == "progress") < 20
+    assert not any(e.event == "done" for e in events)
+    run = db.get_run(req and events[0].run_id)
+    assert run["status"] == "aborted_disconnect"
 
 
 def test_wilson_interval():
