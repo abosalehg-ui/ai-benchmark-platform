@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,21 @@ class Score:
     judge_cost_usd: float = 0.0  # تكلفة استدعاء الحَكَم (llm_judge) إن وُجد
 
 
+@lru_cache(maxsize=32)
+def _load_raw(dataset_file: str) -> tuple[dict, ...]:
+    """يقرأ ملف الداتاست من القرص مرّة واحدة لكل عملية.
+
+    ``list_benchmarks`` و``/api/estimate`` كانا يعيدان قراءة كل ملفات
+    الداتاست وتحليل JSON في كل طلب. الملفات ثابتة أثناء عمر العملية،
+    فالتخزين المؤقّت آمن ويوفّر قراءة قرص متكرّرة أثناء البثّ.
+    """
+    path = DATASETS_DIR / dataset_file
+    if not path.exists():
+        raise FileNotFoundError(f"داتاست غير موجود: {path}")
+    with open(path, encoding="utf-8") as f:
+        return tuple(json.load(f))
+
+
 class BaseBenchmark(ABC):
     """واجهة أساسية لكل بنشمارك."""
 
@@ -46,12 +62,7 @@ class BaseBenchmark(ABC):
 
     def load(self) -> list[Problem]:
         """تحميل المسائل من الداتاست."""
-        path = DATASETS_DIR / self.dataset_file
-        if not path.exists():
-            raise FileNotFoundError(f"داتاست غير موجود: {path}")
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        return [self._parse_problem(item) for item in data]
+        return [self._parse_problem(dict(item)) for item in _load_raw(self.dataset_file)]
 
     @abstractmethod
     def _parse_problem(self, raw: dict) -> Problem:
@@ -63,14 +74,35 @@ class BaseBenchmark(ABC):
         """بناء الـ prompt الذي سيُرسل للنموذج."""
         ...
 
-    @abstractmethod
     async def evaluate(
         self,
         problem: Problem,
         response: ModelResponse,
         judge_provider: BaseProvider | None = None,
     ) -> Score:
-        """تقييم استجابة النموذج."""
+        """تقييم استجابة النموذج.
+
+        Template method: يعالج حالة خطأ المزوّد مرّة واحدة هنا — كانت هذه
+        الكتلة مكرّرة حرفياً في الثمانية بنشماركات، وكان أي بنشمارك جديد
+        قد ينساها فيُقيَّم ردّ فارغ كإجابة خاطئة بدل خطأ تشغيل.
+        """
+        if response.is_error:
+            return Score(
+                problem_id=problem.id,
+                correct=False,
+                model_response=response.text,
+                error=response.error,
+            )
+        return await self._evaluate_response(problem, response, judge_provider)
+
+    @abstractmethod
+    async def _evaluate_response(
+        self,
+        problem: Problem,
+        response: ModelResponse,
+        judge_provider: BaseProvider | None = None,
+    ) -> Score:
+        """التقييم الفعلي — يُستدعى فقط عندما تكون الاستجابة سليمة."""
         ...
 
     @property

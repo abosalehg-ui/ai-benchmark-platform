@@ -4,16 +4,23 @@ from __future__ import annotations
 import httpx
 
 from backend.providers._http import post_with_retry
-from backend.providers.base import BaseProvider, ModelResponse, measure_latency
+from backend.providers.base import (
+    BaseProvider,
+    ModelResponse,
+    format_exception,
+    format_http_error,
+    measure_latency,
+)
 
 
 class ClaudeProvider(BaseProvider):
     name = "anthropic"
     available_models = [
-        "claude-opus-4-7",
-        "claude-opus-4-6",
-        "claude-sonnet-4-6",
-        "claude-haiku-4-5-20251001",
+        "claude-opus-5",
+        "claude-fable-5",
+        "claude-sonnet-5",
+        "claude-opus-4-8",
+        "claude-haiku-4-5",
     ]
     API_URL = "https://api.anthropic.com/v1/messages"
     API_VERSION = "2023-06-01"
@@ -48,12 +55,12 @@ class ClaudeProvider(BaseProvider):
                 return ModelResponse(
                     text="",
                     model_id=model,
-                    error=f"HTTP {e.response.status_code}: {e.response.text[:200]}",
+                    error=format_http_error(self.name, model, e),
                     latency_ms=t.elapsed_ms if hasattr(t, "elapsed_ms") else 0,
                 )
             except Exception as e:
                 return ModelResponse(
-                    text="", model_id=model, error=f"{type(e).__name__}: {e}"
+                    text="", model_id=model, error=format_exception(self.name, model, e)
                 )
 
         text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")

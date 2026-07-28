@@ -3,76 +3,90 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%E2%8A%9E%3C/text%3E%3C/svg%3E" />
   <title>منصة البنشمارك — اختبار نماذج الذكاء الاصطناعي</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <!-- كل الأصول مستضافة محلياً: لا طلبات لطرف ثالث، وتعمل offline،
+       ويسمح بذلك رأس CSP الصارم (default-src 'self') -->
+  <link rel="stylesheet" href="/static/vendor/fonts.css" />
   <link rel="stylesheet" href="/static/styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/static/vendor/chart.umd.min.js" defer></script>
 </head>
 <body>
 
+<a href="#main-content" class="skip-link">تخطَّ إلى المحتوى</a>
+
 <header class="topbar">
   <div class="brand">
-    <div class="logo-mark">⊞</div>
+    <div class="logo-mark" aria-hidden="true">⊞</div>
     <div>
       <h1>منصة البنشمارك</h1>
       <p class="subtitle">اختبر وقارن نماذج الذكاء الاصطناعي على بيانات حقيقية</p>
     </div>
   </div>
-  <nav>
-    <button class="tab active" data-tab="run">تشغيل اختبار</button>
-    <button class="tab" data-tab="history">السجل</button>
-    <button class="tab" data-tab="settings">المفاتيح</button>
-    <button id="theme-toggle" class="theme-toggle" title="تبديل المظهر" aria-label="تبديل المظهر">🌓</button>
+  <nav aria-label="أقسام المنصة">
+    <div class="tablist" role="tablist">
+      <button class="tab active" role="tab" id="tab-btn-run"
+              aria-selected="true" aria-controls="tab-run" data-tab="run">تشغيل اختبار</button>
+      <button class="tab" role="tab" id="tab-btn-history" tabindex="-1"
+              aria-selected="false" aria-controls="tab-history" data-tab="history">السجل</button>
+      <button class="tab" role="tab" id="tab-btn-settings" tabindex="-1"
+              aria-selected="false" aria-controls="tab-settings" data-tab="settings">المفاتيح</button>
+    </div>
+    <button id="theme-toggle" class="theme-toggle" type="button"
+            title="تبديل المظهر" aria-label="تبديل المظهر الفاتح/الداكن" aria-pressed="false">🌓</button>
   </nav>
 </header>
 
-<main>
+<main id="main-content">
   <!-- ============== صفحة التشغيل ============== -->
-  <section id="tab-run" class="tab-content active">
+  <section id="tab-run" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-run" tabindex="0">
     <div class="grid-layout">
       <!-- العمود الأول: اختيار البنشمارك -->
       <div class="panel">
         <div class="panel-header">
-          <span class="step-num">1</span>
+          <span class="step-num" aria-hidden="true">1</span>
           <h2>اختر البنشمارك</h2>
         </div>
         <div id="benchmark-list" class="benchmark-grid"></div>
 
         <div class="field-group">
           <label for="n-problems">عدد المسائل</label>
-          <input type="number" id="n-problems" min="1" max="200" value="5" />
-          <small>كل مسألة = استدعاء واحد لكل نموذج. ابدأ بقليل.</small>
+          <input type="number" id="n-problems" min="1" max="200" value="5"
+                 aria-describedby="n-problems-hint" />
+          <small id="n-problems-hint">كل مسألة = استدعاء واحد لكل نموذج. ابدأ بقليل.</small>
         </div>
 
         <div id="categories-wrap" class="field-group hidden">
-          <label>تصنيفات محدّدة (اختياري)</label>
-          <div id="categories-list" class="categories-list"></div>
-          <small>اتركها فارغة لتشمل كل التصنيفات.</small>
+          <fieldset>
+            <legend>تصنيفات محدّدة (اختياري)</legend>
+            <div id="categories-list" class="categories-list"></div>
+            <small>اتركها فارغة لتشمل كل التصنيفات.</small>
+          </fieldset>
         </div>
 
         <div id="difficulties-wrap" class="field-group hidden">
-          <label>مستوى الصعوبة (اختياري)</label>
-          <div id="difficulties-list" class="categories-list"></div>
-          <small>اتركها فارغة لتشمل كل المستويات.</small>
+          <fieldset>
+            <legend>مستوى الصعوبة (اختياري)</legend>
+            <div id="difficulties-list" class="categories-list"></div>
+            <small>اتركها فارغة لتشمل كل المستويات.</small>
+          </fieldset>
         </div>
       </div>
 
       <!-- العمود الثاني: اختيار النماذج -->
       <div class="panel">
         <div class="panel-header">
-          <span class="step-num">2</span>
+          <span class="step-num" aria-hidden="true">2</span>
           <h2>اختر النماذج</h2>
         </div>
         <div id="model-picker"></div>
-        <button id="add-model-btn" class="btn-add">+ إضافة نموذج</button>
+        <button id="add-model-btn" class="btn-add" type="button">+ إضافة نموذج</button>
       </div>
 
       <!-- العمود الثالث: التشغيل + النتائج -->
       <div class="panel panel-wide">
         <div class="panel-header">
-          <span class="step-num">3</span>
+          <span class="step-num" aria-hidden="true">3</span>
           <h2>التشغيل</h2>
         </div>
 
@@ -88,22 +102,41 @@
           </label>
           <div class="field-inline">
             <label for="budget-usd">حدّ التكلفة بالدولار (اختياري)</label>
-            <input type="number" id="budget-usd" min="0" step="0.01" placeholder="مثال: 0.50" />
+            <input type="number" id="budget-usd" min="0" step="0.01" placeholder="مثال: 0.50"
+                   aria-describedby="budget-hint" />
           </div>
+          <small id="budget-hint" class="muted">
+            الحدّ تقريبي: يُفحص بعد كل استدعاء، فقد يتجاوزه بمقدار الاستدعاءات المتوازية الجارية.
+          </small>
         </div>
 
-        <button id="run-btn" class="btn-primary">▶ شغّل الاختبار</button>
+        <button id="run-btn" class="btn-primary" type="button">▶ شغّل الاختبار</button>
 
         <div id="progress-area" class="hidden">
-          <div class="progress-bar"><div id="progress-fill"></div></div>
-          <div id="progress-text" class="muted small"></div>
+          <div id="progress-bar" class="progress-bar" role="progressbar"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+               aria-labelledby="progress-text">
+            <div id="progress-fill"></div>
+          </div>
+          <div id="progress-text" class="muted small" role="status" aria-live="polite"></div>
+
+          <div id="budget-warning" class="budget-warning" role="alert" hidden></div>
+          <div id="run-errors" class="error-summary" role="alert" hidden></div>
 
           <div class="live-results">
             <h3>النتائج اللحظية</h3>
+            <p class="muted small">
+              كل مربّع مسألة: ✓ صحيح · ✗ خطأ · ! خطأ تشغيل · ⟲ من الـ cache. اضغط أيّها للتفاصيل.
+            </p>
             <div id="live-models"></div>
           </div>
 
-          <canvas id="results-chart"></canvas>
+          <figure class="chart-figure">
+            <canvas id="results-chart" aria-hidden="true"></canvas>
+            <figcaption class="muted small">
+              مخطّط الدقة لكل نموذج — نفس الأرقام متاحة في جدول الملخّص أدناه.
+            </figcaption>
+          </figure>
         </div>
 
         <div id="run-summary" class="hidden">
@@ -117,11 +150,11 @@
           </div>
 
           <div class="export-row">
-            <button id="view-details-btn" class="btn-secondary">عرض التفاصيل الكاملة</button>
-            <button id="view-diff-btn" class="btn-secondary">📊 مقارنة جنباً إلى جنب</button>
-            <button id="copy-md-btn" class="btn-secondary small">📋 نسخ Markdown</button>
-            <button id="export-json-btn" class="btn-secondary small">⬇ JSON</button>
-            <button id="export-csv-btn" class="btn-secondary small">⬇ CSV</button>
+            <button id="view-details-btn" class="btn-secondary" type="button">عرض التفاصيل الكاملة</button>
+            <button id="view-diff-btn" class="btn-secondary" type="button">📊 مقارنة جنباً إلى جنب</button>
+            <button id="copy-md-btn" class="btn-secondary small" type="button">📋 نسخ Markdown</button>
+            <button id="export-json-btn" class="btn-secondary small" type="button">⬇ JSON</button>
+            <button id="export-csv-btn" class="btn-secondary small" type="button">⬇ CSV</button>
           </div>
         </div>
       </div>
@@ -129,61 +162,72 @@
   </section>
 
   <!-- ============== صفحة السجل ============== -->
-  <section id="tab-history" class="tab-content">
+  <section id="tab-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-history" tabindex="0">
     <div class="panel">
       <div class="panel-header">
         <h2>سجل الاختبارات السابقة</h2>
-        <button id="refresh-history" class="btn-secondary small">↻ تحديث</button>
+        <button id="refresh-history" class="btn-secondary small" type="button">↻ تحديث</button>
       </div>
       <div id="history-list"></div>
     </div>
   </section>
 
   <!-- ============== صفحة الإعدادات ============== -->
-  <section id="tab-settings" class="tab-content">
+  <section id="tab-settings" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-settings" tabindex="0">
     <div class="panel">
       <div class="panel-header">
         <h2>مفاتيح API</h2>
       </div>
       <div class="warning-box">
-        <strong>⚠ تنبيه أمني:</strong> المفاتيح تُحفظ محلياً في متصفحك فقط (localStorage)، ولا تُرسَل إلى أي خادم سوى مزود النموذج نفسه. لا تستخدم هذه المنصة على جهاز عام.
+        <strong>⚠ تنبيه أمني:</strong> المفاتيح تُحفظ محلياً في متصفحك فقط (localStorage)،
+        وتُرسَل ضمن جسم طلب <code>/api/run</code> إلى خادمك المحلي الذي يمرّرها لمزوّد
+        النموذج بدون تخزين. لا تستخدم هذه المنصّة على جهاز عام.
       </div>
 
       <div class="key-section">
-        <label>Anthropic API Key</label>
-        <input type="password" id="key-anthropic" placeholder="sk-ant-..." />
+        <label for="key-anthropic">Anthropic API Key</label>
+        <input type="password" id="key-anthropic" autocomplete="off" placeholder="sk-ant-..." />
       </div>
       <div class="key-section">
-        <label>OpenAI API Key</label>
-        <input type="password" id="key-openai" placeholder="sk-..." />
+        <label for="key-openai">OpenAI API Key</label>
+        <input type="password" id="key-openai" autocomplete="off" placeholder="sk-..." />
       </div>
       <div class="key-section">
-        <label>Google Gemini API Key</label>
-        <input type="password" id="key-gemini" placeholder="AIza..." />
+        <label for="key-gemini">Google Gemini API Key</label>
+        <input type="password" id="key-gemini" autocomplete="off" placeholder="AIza..." />
       </div>
       <div class="key-section">
-        <label>OpenRouter API Key</label>
-        <input type="password" id="key-openrouter" placeholder="sk-or-..." />
+        <label for="key-openrouter">OpenRouter API Key</label>
+        <input type="password" id="key-openrouter" autocomplete="off" placeholder="sk-or-..." />
       </div>
       <div class="key-section">
-        <label>Groq API Key</label>
-        <input type="password" id="key-groq" placeholder="gsk_..." />
+        <label for="key-groq">Groq API Key</label>
+        <input type="password" id="key-groq" autocomplete="off" placeholder="gsk_..." />
       </div>
       <div class="key-section">
-        <label>Mistral API Key</label>
-        <input type="password" id="key-mistral" placeholder="..." />
+        <label for="key-mistral">Mistral API Key</label>
+        <input type="password" id="key-mistral" autocomplete="off" placeholder="..." />
       </div>
       <div class="key-section">
-        <label>Cohere API Key</label>
-        <input type="password" id="key-cohere" placeholder="..." />
+        <label for="key-cohere">Cohere API Key</label>
+        <input type="password" id="key-cohere" autocomplete="off" placeholder="..." />
       </div>
       <div class="key-section">
-        <label>xAI API Key (Grok)</label>
-        <input type="password" id="key-xai" placeholder="xai-..." />
+        <label for="key-xai">xAI API Key (Grok)</label>
+        <input type="password" id="key-xai" autocomplete="off" placeholder="xai-..." />
       </div>
       <div class="key-section">
-        <label>Ollama Base URL (تشغيل محلي)</label>
-        <input type="text" id="key-ollama-url" placeholder="http://localhost:11434" value="http://localhost:11434" />
+        <label for="key-ollama-url">Ollama Base URL (تشغيل محلي)</label>
+        <input type="text" id="key-ollama-url" placeholder="http://localhost:11434"
+               value="http://localhost:11434" />
+      </div>
+      <div class="key-section">
+        <label for="key-api-token">رمز وصول الخادم (اختياري)</label>
+        <input type="password" id="key-api-token" autocomplete="off" placeholder="يلزم فقط لو ضبطت API_TOKEN" />
+        <small class="muted">
+          اتركه فارغاً في التشغيل المحلي. لو نشرت المنصّة وضبطت <code>API_TOKEN</code>
+          في بيئة الخادم، ضع نفس القيمة هنا.
+        </small>
       </div>
 
       <div class="settings-row">
@@ -194,29 +238,39 @@
       </div>
 
       <div class="settings-row">
-        <h3 style="margin-bottom: 8px; font-size: 14px;">Sandbox تشغيل الكود</h3>
+        <h3 class="settings-subhead">Sandbox تشغيل الكود</h3>
         <div id="sandbox-status" class="sandbox-status muted small">جارٍ التحقق...</div>
         <small class="muted">للنشر العام: ضع <code>SANDBOX_BACKEND=docker</code> في الـ env قبل تشغيل السيرفر.</small>
       </div>
 
-      <button id="save-keys-btn" class="btn-primary">💾 حفظ المفاتيح محلياً</button>
-      <div id="keys-status" class="muted"></div>
+      <div class="settings-row">
+        <h3 class="settings-subhead">الاستجابات المحفوظة (cache)</h3>
+        <div id="cache-stats" class="muted small">—</div>
+        <button id="clear-cache-btn" class="btn-secondary small" type="button">🗑 تفريغ الـ cache</button>
+      </div>
+
+      <button id="save-keys-btn" class="btn-primary" type="button">💾 حفظ المفاتيح محلياً</button>
     </div>
   </section>
 </main>
 
 <!-- مودال التفاصيل -->
-<div id="details-modal" class="modal hidden">
+<div id="details-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
   <div class="modal-content">
-    <button class="modal-close" id="modal-close">✕</button>
+    <div class="modal-head">
+      <h2 id="modal-title">التفاصيل</h2>
+      <button class="modal-close" id="modal-close" type="button" aria-label="إغلاق النافذة">✕</button>
+    </div>
     <div id="modal-body"></div>
   </div>
 </div>
 
 <footer>
-  <p>منصة بنشمارك مفتوحة المصدر — صُنعت بـ FastAPI و Vanilla JS · <a href="https://github.com/abosalehg-ui" target="_blank">GitHub</a></p>
+  <p>منصة بنشمارك مفتوحة المصدر — صُنعت بـ FastAPI و Vanilla JS ·
+    <a href="https://github.com/abosalehg-ui/ai-benchmark-platform" target="_blank" rel="noopener noreferrer">GitHub</a>
+  </p>
 </footer>
 
-<script src="/static/app.js"></script>
+<script type="module" src="/static/js/main.js"></script>
 </body>
 </html>

@@ -8,9 +8,9 @@ class MistralProvider(OpenAICompatibleProvider):
     name = "mistral"
     available_models = [
         "mistral-large-latest",
+        "mistral-medium-latest",
         "mistral-small-latest",
         "codestral-latest",
-        "open-mistral-nemo",
         "ministral-8b-latest",
     ]
     API_URL = "https://api.mistral.ai/v1/chat/completions"

@@ -1,0 +1,80 @@
+"""حماية من SSRF: التحقّق من عناوين base_url التي يتحكّم بها المستخدم.
+
+المشكلة: `/api/ollama/models?base_url=…` و`targets[].base_url` كانا يُمرَّران
+مباشرةً إلى httpx، فيستطيع أي طالب إجبار الخادم على إصدار طلب لأي عنوان —
+بما فيه خدمات الشبكة الداخلية وnode metadata (169.254.169.254).
+
+السياسة: http/https فقط، ونرفض العناوين الخاصة/loopback إلا إذا كان المضيف
+ضمن allowlist. الافتراضي يسمح بـ localhost فقط (سيناريو Ollama المحلي).
+"""
+from __future__ import annotations
+
+import ipaddress
+import os
+import socket
+from urllib.parse import urlparse
+
+ALLOWED_SCHEMES = {"http", "https"}
+_DEFAULT_ALLOWED_HOSTS = "localhost,127.0.0.1,::1,host.docker.internal"
+
+
+class UnsafeURLError(ValueError):
+    """العنوان مرفوض لأسباب أمنية."""
+
+
+def _allowed_hosts() -> set[str]:
+    raw = os.getenv("ALLOWED_UPSTREAM_HOSTS", _DEFAULT_ALLOWED_HOSTS)
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
+def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def validate_base_url(url: str) -> str:
+    """تحقّق من العنوان وارجعه بدون سلاش زائد. يرفع UnsafeURLError عند الرفض.
+
+    المضيفون في ``ALLOWED_UPSTREAM_HOSTS`` معفَون من فحص العناوين الخاصة —
+    لأنّ Ollama المحلي هو بالضبط ``127.0.0.1`` وهو استخدام مشروع.
+    """
+    if not url or not url.strip():
+        raise UnsafeURLError("عنوان فارغ")
+
+    parsed = urlparse(url.strip())
+    if parsed.scheme.lower() not in ALLOWED_SCHEMES:
+        raise UnsafeURLError(f"مخطّط غير مسموح: {parsed.scheme or '(بلا مخطّط)'} — استخدم http أو https")
+
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise UnsafeURLError("العنوان بلا اسم مضيف")
+
+    allowed = _allowed_hosts()
+    if host in allowed:
+        return url.strip().rstrip("/")
+
+    # نحلّ الاسم ونفحص كل العناوين المُرجَعة (يمنع DNS rebinding البسيط)
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or 80, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as e:
+        raise UnsafeURLError(f"تعذّر حلّ اسم المضيف: {host}") from e
+
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            continue
+        if _is_blocked_ip(ip):
+            raise UnsafeURLError(
+                f"العنوان {host} يشير إلى شبكة داخلية ({addr}). "
+                "أضِفه إلى ALLOWED_UPSTREAM_HOSTS إن كنت تقصد ذلك."
+            )
+
+    return url.strip().rstrip("/")

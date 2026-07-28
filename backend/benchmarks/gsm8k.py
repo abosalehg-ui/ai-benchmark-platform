@@ -1,9 +1,8 @@
 """بنشمارك GSM8K — مسائل رياضية كلامية."""
 from __future__ import annotations
 
-import re
-
 from backend.benchmarks.base import BaseBenchmark, Problem, Score
+from backend.benchmarks.parsing import extract_number
 from backend.providers.base import BaseProvider, ModelResponse
 
 
@@ -35,40 +34,13 @@ class GSM8KBenchmark(BaseBenchmark):
             f"as: #### <number>"
         )
 
-    @staticmethod
-    def extract_answer(text: str) -> float | None:
-        """استخراج الإجابة الرقمية من رد النموذج."""
-        # الصيغة المفضّلة: #### <number>
-        m = re.search(r"####\s*(-?\d[\d,]*\.?\d*)", text)
-        if m:
-            try:
-                return float(m.group(1).replace(",", ""))
-            except ValueError:
-                pass
-        # نأخذ آخر رقم في النص كاحتياط
-        nums = re.findall(r"-?\d[\d,]*\.?\d*", text)
-        if nums:
-            try:
-                return float(nums[-1].replace(",", ""))
-            except ValueError:
-                pass
-        return None
-
-    async def evaluate(
+    async def _evaluate_response(
         self,
         problem: Problem,
         response: ModelResponse,
         judge_provider: BaseProvider | None = None,
     ) -> Score:
-        if response.is_error:
-            return Score(
-                problem_id=problem.id,
-                correct=False,
-                model_response=response.text,
-                error=response.error,
-            )
-
-        predicted = self.extract_answer(response.text)
+        predicted = extract_number(response.text)
         try:
             expected = float(problem.reference)
         except (TypeError, ValueError):

@@ -120,7 +120,7 @@
 - **المفاتيح في المتصفح** (`localStorage`) — لا تُخزَّن على الخادم
 - **Sandbox قابل للاختيار** (subprocess محلي أو Docker معزول للنشر)
 - **CORS مقيّد** افتراضياً للـ localhost (قابل للتخصيص عبر env)
-- **صفر analytics أو tracking**
+- **صفر analytics أو tracking** — كل الأصول مستضافة محلياً، بلا CDN
 
 ---
 
@@ -277,17 +277,33 @@ ai-benchmark-platform/
 │   └── main.py                 # FastAPI: 13 endpoint
 ├── frontend/
 │   ├── index.html              # واجهة RTL responsive
-│   ├── app.js                  # vanilla JS — لا build step
-│   └── styles.css              # dark/light theme + mobile
+│   ├── js/                     # ES modules — لا build step
+│   │   ├── main.js             # الإقلاع، التبويبات، حلقة التشغيل
+│   │   ├── api.js              # كل نداءات الشبكة + معالجة الأخطاء
+│   │   ├── dom.js              # تهريب إجباري، toast، مودال قابل للوصول
+│   │   ├── sse.js              # محلّل Server-Sent Events
+│   │   ├── setup.js            # البنشمارك، الفلاتر، النماذج، المفاتيح
+│   │   ├── results.js          # البثّ اللحظي، الملخّص، H2H، السجل
+│   │   └── state.js            # الحالة المشتركة
+│   ├── vendor/                 # Chart.js + الخطوط محلياً (بلا CDN)
+│   └── styles.css              # dark/light theme + mobile + a11y
 ├── .github/
-│   ├── workflows/ci.yml        # ruff + pytest على 3 إصدارات Python
+│   ├── workflows/ci.yml        # ruff + pytest + بوابة تغطية + pip-audit
+│   ├── dependabot.yml          # تحديثات أسبوعية لـ pip و actions
 │   ├── ISSUE_TEMPLATE/         # bug، feature، saudi_question
 │   └── PULL_REQUEST_TEMPLATE.md
-├── tests/                      # 25 اختبار + 1 Docker e2e opt-in
-├── pyproject.toml              # ruff + pytest config
+├── tests/                      # 125 اختبار + 1 Docker e2e opt-in
+│   ├── test_api.py             # TestClient لكل endpoint
+│   ├── test_providers.py       # MockTransport للمزوّدين التسعة
+│   ├── test_benchmarks.py      # الداتاست + الاستخراج + التقييم
+│   ├── test_runner.py          # التزامن، الميزانية، الانقطاع
+│   ├── test_db.py              # الدقة، الـ cache، H2H
+│   └── test_sandbox.py         # الحظر، المهلة، حدود الموارد
+├── pyproject.toml              # ruff + pytest + coverage config
 ├── CONTRIBUTING.md
 ├── LICENSE
-└── requirements.txt
+├── requirements.txt            # الإنتاج (4 حزم)
+└── requirements-dev.txt        # pytest + ruff + coverage
 ```
 
 ### تدفّق الطلب
@@ -369,6 +385,9 @@ sequenceDiagram
 | `SANDBOX_SUBPROCESS_CPU_SECONDS` | `15` | حدّ زمن المعالج للـ subprocess sandbox (POSIX) |
 | `SANDBOX_SUBPROCESS_FSIZE_MB` | `10` | أقصى حجم ملف يكتبه الـ subprocess sandbox (POSIX) |
 | `RUN_DOCKER_TESTS` | `0` | تشغيل اختبارات Docker e2e (يحتاج daemon شغّال) |
+| `API_TOKEN` | *(فارغ)* | لو ضُبِط، تُفرَض مصادقة `X-API-Token` على كل `/api` |
+| `ALLOWED_UPSTREAM_HOSTS` | `localhost,127.0.0.1,::1,host.docker.internal` | المضيفون المسموح لـ `base_url` أن يشير إليهم (حماية SSRF) |
+| `LOG_LEVEL` | `INFO` | مستوى التسجيل (المفاتيح تُنقَّح تلقائياً) |
 
 ---
 
@@ -427,12 +446,14 @@ BENCHMARKS["my_benchmark"] = MyBenchmark
 
 ### المفاتيح
 - محفوظة في `localStorage` المتصفح فقط
-- تُرسَل لسيرفرك المحلي كـ header، يمرّرها للمزوّد بدون تخزين
+- تُرسَل ضمن **جسم** طلب `/api/run` لسيرفرك المحلي، يمرّرها للمزوّد بدون تخزين
 - **ما في طرف ثالث** يوصل لها
 
 ### الخصوصية
-- **صفر** analytics أو tracking
+- **صفر** analytics أو tracking، و**صفر طلبات لطرف ثالث**: Chart.js والخطوط
+  مستضافة محلياً في `frontend/vendor/` (تعمل offline)
 - كل البيانات محلية على جهازك (SQLite + localStorage)
+- رأس `Content-Security-Policy` صارم (`default-src 'self'`) يمنع أي مصدر خارجي
 - كود مفتوح المصدر — راجع بنفسك
 
 ### للنشر العام
@@ -445,7 +466,8 @@ BENCHMARKS["my_benchmark"] = MyBenchmark
 
 ## ⚠️ حدود المنصة
 
-- **لا توفّر authentication داخلي** — للنشر العام يلزم تركيب auth أمامها
+- **المصادقة اختيارية**: اضبط `API_TOKEN` في البيئة فتُفرَض على كل مسارات `/api`
+  عبر رأس `X-API-Token`. بدونه تعمل المنصّة بلا احتكاك للاستخدام المحلي
 - **عدد الأسئلة في بعض البنشماركات صغير** (HumanEval 10، LLM-Judge 8) — مناسب للتجربة، لكن للنتائج الدالّة إحصائياً ينصح بـ n ≥ 30 (الواجهة تعرض **فاصل ثقة 95%** ليخبرك متى الـ n قليل)
 - **التسعير قد يتغيّر** — راجع `backend/pricing.py` ويحدَّث دورياً
 - **اختبارات Docker لا تُشغَّل في CI افتراضياً** (تحتاج daemon شغّال، تُفعَّل بـ `RUN_DOCKER_TESTS=1`)

@@ -1,53 +1,133 @@
 """خادم FastAPI لمنصة البنشمارك."""
 from __future__ import annotations
 
+import csv
+import io
+import json as jsonlib
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend import db
 from backend.benchmarks import (
     BENCHMARKS,
+    filter_problems,
     get_benchmark_categories,
     get_benchmark_difficulties,
     list_benchmarks,
+    make_benchmark,
 )
+from backend.logging_config import get_logger, setup_logging
+from backend.netguard import UnsafeURLError, validate_base_url
+from backend.pricing import PRICING, PRICING_LAST_VERIFIED, get_price
 from backend.providers import PROVIDERS
+from backend.providers.base import estimate_tokens_from_text
 from backend.providers.ollama import OllamaProvider
 from backend.runner import ModelTarget, RunRequest, event_to_sse, run_benchmark
-from backend.pricing import PRICING
+from backend.security import (
+    SecurityHeadersMiddleware,
+    api_token_configured,
+    require_api_token,
+    sanitize_csv_cell,
+)
 
 ROOT = Path(__file__).parent.parent
 FRONTEND_DIR = ROOT / "frontend"
 
+logger = get_logger(__name__)
+
+# أسماء المزوّدين المسموحة — تُستخدم لبناء نوع Literal يفرضه Pydantic
+ProviderName = Literal[tuple(PROVIDERS)]  # type: ignore[valid-type]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_logging()
     db.init_db()
+    logger.info(
+        "المنصّة جاهزة — sandbox=%s، مصادقة=%s",
+        os.getenv("SANDBOX_BACKEND", "subprocess"),
+        "مفعّلة" if api_token_configured() else "معطّلة (بلا API_TOKEN)",
+    )
     yield
 
 
-app = FastAPI(title="AI Benchmark Platform", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="AI Benchmark Platform", version="0.2.0", lifespan=lifespan)
 
-# المنصة مصمّمة للاستخدام المحلي. لو احتجت توسيع origins حدّد ALLOWED_ORIGINS كـ env.
+app.add_middleware(SecurityHeadersMiddleware)
+
+# المنصّة مصمّمة للاستخدام المحلي. لو احتجت توسيع origins حدّد ALLOWED_ORIGINS كـ env.
 _default_origins = "http://localhost:8000,http://127.0.0.1:8000"
 _allowed = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-API-Token"],
 )
+
+# كل مسارات /api تمرّ عبر الفحص. بلا API_TOKEN في البيئة الـ dependency
+# تمرّ فوراً، فالتشغيل المحلي يبقى بلا احتكاك.
+protected = [Depends(require_api_token)]
+
+
+# ================== نماذج الطلبات ==================
+
+class TargetBody(BaseModel):
+    """نموذج مستهدف. المزوّد مقيّد بقائمة معروفة والعنوان يمرّ بفحص SSRF."""
+    provider: ProviderName
+    model: str = Field(min_length=1, max_length=200)
+    api_key: str = Field(default="", max_length=500)
+    base_url: str | None = Field(default=None, max_length=500)
+
+    @field_validator("base_url")
+    @classmethod
+    def _check_base_url(cls, v: str | None) -> str | None:
+        if not v:
+            return None
+        try:
+            return validate_base_url(v)
+        except UnsafeURLError as e:
+            raise ValueError(str(e)) from e
+
+
+class JudgeBody(BaseModel):
+    provider: ProviderName
+    model: str = Field(min_length=1, max_length=200)
+    api_key: str = Field(default="", max_length=500)
+
+
+class RunRequestBody(BaseModel):
+    benchmark: str
+    n_problems: int = Field(default=10, ge=1, le=200)
+    targets: list[TargetBody] = Field(min_length=1, max_length=10)
+    judge: JudgeBody | None = None
+    use_cache: bool = True
+    budget_usd: float | None = Field(default=None, ge=0)
+    categories: list[str] = Field(default_factory=list, max_length=50)
+    difficulties: list[str] = Field(default_factory=list, max_length=20)
+    enforce_safety: bool = True
+
+
+class EstimateRequestBody(BaseModel):
+    benchmark: str
+    n_problems: int = Field(default=10, ge=1, le=200)
+    targets: list[TargetBody] = Field(default_factory=list, max_length=10)
+    categories: list[str] = Field(default_factory=list, max_length=50)
+    difficulties: list[str] = Field(default_factory=list, max_length=20)
+    avg_output_tokens: int = Field(default=200, ge=1, le=4000)
 
 
 # ================== المسارات API ==================
 
-@app.get("/api/providers")
+@app.get("/api/providers", dependencies=protected)
 def get_providers():
     """قائمة المزودين والنماذج المتاحة لكل واحد."""
     out = []
@@ -60,40 +140,41 @@ def get_providers():
     return {"providers": out}
 
 
-@app.get("/api/benchmarks")
+@app.get("/api/benchmarks", dependencies=protected)
 def get_benchmarks():
     return {"benchmarks": list_benchmarks()}
 
 
-@app.get("/api/pricing")
+@app.get("/api/pricing", dependencies=protected)
 def get_pricing():
-    return PRICING
+    return {"pricing": PRICING, "last_verified": PRICING_LAST_VERIFIED}
 
 
-@app.get("/api/ollama/models")
+@app.get("/api/config", dependencies=protected)
+def get_config():
+    """إعدادات يحتاجها العميل ليعرف حدود الخادم بدل تخمينها."""
+    return {
+        "max_problems": 200,
+        "max_targets": 10,
+        "auth_required": api_token_configured(),
+    }
+
+
+@app.get("/api/ollama/models", dependencies=protected)
 async def get_ollama_models(base_url: str = "http://localhost:11434"):
     """جلب النماذج المثبتة محلياً في Ollama.
 
     يرجع: {"models": [...], "error": str | null}
     """
-    p = OllamaProvider(base_url=base_url)
-    result = await p.list_local_models()
-    return result
+    try:
+        safe_url = validate_base_url(base_url)
+    except UnsafeURLError as e:
+        raise HTTPException(400, f"عنوان Ollama مرفوض: {e}") from e
+    p = OllamaProvider(base_url=safe_url)
+    return await p.list_local_models()
 
 
-class RunRequestBody(BaseModel):
-    benchmark: str
-    n_problems: int = Field(default=10, ge=1, le=200)
-    targets: list[dict]
-    judge: dict | None = None
-    use_cache: bool = True
-    budget_usd: float | None = Field(default=None, ge=0)
-    categories: list[str] = Field(default_factory=list)
-    difficulties: list[str] = Field(default_factory=list)
-    enforce_safety: bool = True
-
-
-@app.get("/api/benchmarks/{benchmark_id}/categories")
+@app.get("/api/benchmarks/{benchmark_id}/categories", dependencies=protected)
 def get_categories(benchmark_id: str):
     """قائمة التصنيفات المتاحة في البنشمارك (لو الداتاست يدعمها)."""
     if benchmark_id not in BENCHMARKS:
@@ -101,7 +182,7 @@ def get_categories(benchmark_id: str):
     return {"categories": get_benchmark_categories(benchmark_id)}
 
 
-@app.get("/api/benchmarks/{benchmark_id}/difficulties")
+@app.get("/api/benchmarks/{benchmark_id}/difficulties", dependencies=protected)
 def get_difficulties(benchmark_id: str):
     """قائمة مستويات الصعوبة المتاحة في البنشمارك."""
     if benchmark_id not in BENCHMARKS:
@@ -109,31 +190,17 @@ def get_difficulties(benchmark_id: str):
     return {"difficulties": get_benchmark_difficulties(benchmark_id)}
 
 
-class EstimateRequestBody(BaseModel):
-    benchmark: str
-    n_problems: int = Field(default=10, ge=1, le=200)
-    targets: list[dict]
-    categories: list[str] = Field(default_factory=list)
-    difficulties: list[str] = Field(default_factory=list)
-    avg_output_tokens: int = Field(default=200, ge=1, le=4000)
-
-
-@app.post("/api/estimate")
+@app.post("/api/estimate", dependencies=protected)
 def estimate_cost(req: EstimateRequestBody):
     """تقدير تكلفة التشغيل قبل الانطلاق.
 
     يحسب متوسط طول الـ prompt من الداتاست الفعلي، ثم يضرب في أسعار كل نموذج.
     """
-    from backend.benchmarks import make_benchmark
-    from backend.pricing import get_price
-    from backend.providers.base import estimate_tokens_from_text
-    from backend.runner import _filter_problems
-
     if req.benchmark not in BENCHMARKS:
         raise HTTPException(404, "بنشمارك غير معروف")
 
     benchmark = make_benchmark(req.benchmark)
-    problems = _filter_problems(benchmark.load(), req.categories, req.difficulties)
+    problems = filter_problems(benchmark.load(), req.categories, req.difficulties)
     problems = problems[: req.n_problems]
     if not problems:
         return {"total_usd": 0.0, "per_target": [], "n_problems_effective": 0, "notes": "لا توجد مسائل بعد الفلترة"}
@@ -149,9 +216,7 @@ def estimate_cost(req: EstimateRequestBody):
     per_target = []
     grand_total = 0.0
     for t in req.targets:
-        provider = t.get("provider", "")
-        model = t.get("model", "")
-        price = get_price(provider, model)
+        price = get_price(t.provider, t.model)
         cost = 0.0
         if price:
             cost = (
@@ -159,8 +224,8 @@ def estimate_cost(req: EstimateRequestBody):
                 + (total_output_tokens / 1_000_000) * price["output"]
             )
         per_target.append({
-            "provider": provider,
-            "model": model,
+            "provider": t.provider,
+            "model": t.model,
             "estimated_input_tokens": total_input_tokens,
             "estimated_output_tokens": total_output_tokens,
             "estimated_cost_usd": round(cost, 6),
@@ -176,7 +241,7 @@ def estimate_cost(req: EstimateRequestBody):
     }
 
 
-@app.post("/api/run")
+@app.post("/api/run", dependencies=protected)
 async def post_run(req: RunRequestBody, request: Request):
     """تشغيل بنشمارك مع streaming لحظي عبر SSE."""
     if req.benchmark not in BENCHMARKS:
@@ -184,22 +249,20 @@ async def post_run(req: RunRequestBody, request: Request):
 
     targets = [
         ModelTarget(
-            provider=t["provider"],
-            model=t["model"],
-            api_key=t.get("api_key", ""),
-            base_url=t.get("base_url"),
+            provider=t.provider,
+            model=t.model,
+            api_key=t.api_key,
+            base_url=t.base_url,
         )
         for t in req.targets
     ]
-    if not targets:
-        raise HTTPException(400, "يجب اختيار نموذج واحد على الأقل")
 
     judge = None
     if req.judge:
         judge = ModelTarget(
-            provider=req.judge["provider"],
-            model=req.judge["model"],
-            api_key=req.judge.get("api_key", ""),
+            provider=req.judge.provider,
+            model=req.judge.model,
+            api_key=req.judge.api_key,
         )
 
     run_req = RunRequest(
@@ -225,12 +288,12 @@ async def post_run(req: RunRequestBody, request: Request):
     )
 
 
-@app.get("/api/runs")
+@app.get("/api/runs", dependencies=protected)
 def get_runs():
     return {"runs": db.list_runs()}
 
 
-@app.get("/api/runs/{run_id}")
+@app.get("/api/runs/{run_id}", dependencies=protected)
 def get_run(run_id: str):
     run = db.get_run(run_id)
     if not run:
@@ -238,7 +301,7 @@ def get_run(run_id: str):
     return run
 
 
-@app.get("/api/runs/{run_id}/h2h")
+@app.get("/api/runs/{run_id}/h2h", dependencies=protected)
 def get_run_h2h(run_id: str):
     """مصفوفة المقارنة الزوجية (Head-to-Head) للـ run."""
     h2h = db.head_to_head(run_id)
@@ -247,7 +310,7 @@ def get_run_h2h(run_id: str):
     return h2h
 
 
-@app.get("/api/runs/{run_id}/export")
+@app.get("/api/runs/{run_id}/export", dependencies=protected)
 def export_run(run_id: str, format: str = "json"):
     """تصدير نتائج Run كاملة بصيغة JSON أو CSV."""
     run = db.get_run(run_id)
@@ -256,16 +319,13 @@ def export_run(run_id: str, format: str = "json"):
 
     fmt = format.lower()
     if fmt == "json":
-        import json as _json
-        body = _json.dumps(run, ensure_ascii=False, indent=2)
+        body = jsonlib.dumps(run, ensure_ascii=False, indent=2)
         return PlainTextResponse(
             body,
             media_type="application/json",
             headers={"Content-Disposition": f'attachment; filename="run_{run_id}.json"'},
         )
     if fmt == "csv":
-        import csv
-        import io
         buf = io.StringIO()
         cols = [
             "run_id", "provider", "model", "problem_id", "correct", "raw_score",
@@ -275,7 +335,8 @@ def export_run(run_id: str, format: str = "json"):
         w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         for d in run.get("details", []):
-            w.writerow({k: d.get(k, "") for k in cols})
+            # sanitize: ردود النماذج قد تبدأ بـ = أو + فيفسّرها Excel كصيغة
+            w.writerow({k: sanitize_csv_cell(d.get(k, "")) for k in cols})
         # BOM علشان Excel يفتح UTF-8 صح
         return PlainTextResponse(
             "﻿" + buf.getvalue(),
@@ -285,28 +346,30 @@ def export_run(run_id: str, format: str = "json"):
     raise HTTPException(400, "format يجب أن يكون json أو csv")
 
 
-@app.delete("/api/runs/{run_id}")
+@app.delete("/api/runs/{run_id}", dependencies=protected)
 def delete_run(run_id: str):
     if not db.delete_run(run_id):
         raise HTTPException(404, "Run غير موجود")
+    logger.info("حُذف run %s", run_id)
     return {"ok": True}
 
 
-@app.get("/api/sandbox/status")
+@app.get("/api/sandbox/status", dependencies=protected)
 def get_sandbox_status():
     """معلومات عن sandbox backend الحالي (docker / subprocess)."""
     from backend.sandbox import backend_status
     return backend_status()
 
 
-@app.get("/api/cache/stats")
+@app.get("/api/cache/stats", dependencies=protected)
 def get_cache_stats():
     return db.cache_stats()
 
 
-@app.delete("/api/cache")
+@app.delete("/api/cache", dependencies=protected)
 def clear_cache():
     n = db.cache_clear()
+    logger.info("فُرِّغ الـ cache — %d مدخل", n)
     return {"cleared": n}
 
 

@@ -7,9 +7,9 @@
 from __future__ import annotations
 
 import json
-import re
 
 from backend.benchmarks.base import BaseBenchmark, Problem, Score
+from backend.benchmarks.parsing import extract_json_object
 from backend.providers.base import BaseProvider, ModelResponse
 
 
@@ -44,7 +44,9 @@ class ToolUseBenchmark(BaseBenchmark):
                 "tools": raw["tools"],
                 "category": raw.get("category", "general"),
                 "difficulty": raw.get("difficulty", "متوسط"),
-                "required_args": raw["expected"].get("required_args", list(raw["expected"]["arguments"].keys())),
+                "required_args": raw["expected"].get(
+                    "required_args", list(raw["expected"]["arguments"].keys())
+                ),
             },
         )
 
@@ -58,23 +60,8 @@ class ToolUseBenchmark(BaseBenchmark):
 
     @staticmethod
     def extract_json(text: str) -> dict | None:
-        """يستخرج أوّل كائن JSON صالح من نص النموذج."""
-        # حاول كتلة ```json ... ```
-        m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-        candidates = []
-        if m:
-            candidates.append(m.group(1))
-        # حاول كل كتلة بين {}
-        for c in re.finditer(r"\{(?:[^{}]|(?:\{[^{}]*\}))*\}", text, re.DOTALL):
-            candidates.append(c.group(0))
-        for cand in candidates:
-            try:
-                obj = json.loads(cand)
-                if isinstance(obj, dict) and "tool" in obj:
-                    return obj
-            except json.JSONDecodeError:
-                continue
-        return None
+        """يستخرج أوّل كائن JSON فيه مفتاح ``tool`` من نص النموذج."""
+        return extract_json_object(text, required_key="tool")
 
     @staticmethod
     def _normalize(v):
@@ -83,20 +70,12 @@ class ToolUseBenchmark(BaseBenchmark):
             return v.strip().lower()
         return v
 
-    async def evaluate(
+    async def _evaluate_response(
         self,
         problem: Problem,
         response: ModelResponse,
         judge_provider: BaseProvider | None = None,
     ) -> Score:
-        if response.is_error:
-            return Score(
-                problem_id=problem.id,
-                correct=False,
-                model_response=response.text,
-                error=response.error,
-            )
-
         parsed = self.extract_json(response.text)
         expected = problem.reference
         required = problem.metadata["required_args"]
@@ -111,6 +90,8 @@ class ToolUseBenchmark(BaseBenchmark):
 
         tool_match = self._normalize(parsed.get("tool")) == self._normalize(expected["tool"])
         args = parsed.get("arguments") or parsed.get("args") or {}
+        if not isinstance(args, dict):
+            args = {}
         args_match = all(
             self._normalize(args.get(k)) == self._normalize(expected["arguments"].get(k))
             for k in required
@@ -121,7 +102,10 @@ class ToolUseBenchmark(BaseBenchmark):
         if not tool_match:
             judgment_parts.append("(غير مطابقة)")
         if not args_match:
-            missing = [k for k in required if self._normalize(args.get(k)) != self._normalize(expected["arguments"].get(k))]
+            missing = [
+                k for k in required
+                if self._normalize(args.get(k)) != self._normalize(expected["arguments"].get(k))
+            ]
             judgment_parts.append(f"معاملات خاطئة/ناقصة: {missing}")
 
         return Score(

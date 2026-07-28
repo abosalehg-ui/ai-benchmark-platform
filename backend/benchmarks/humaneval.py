@@ -40,20 +40,12 @@ class HumanEvalBenchmark(BaseBenchmark):
             f"Return the complete function (with signature) inside ```python ... ```"
         )
 
-    async def evaluate(
+    async def _evaluate_response(
         self,
         problem: Problem,
         response: ModelResponse,
         judge_provider: BaseProvider | None = None,
     ) -> Score:
-        if response.is_error:
-            return Score(
-                problem_id=problem.id,
-                correct=False,
-                model_response=response.text,
-                error=response.error,
-            )
-
         code = extract_python_code(response.text)
         # نضيف توقيع الدالة الأصلي إذا الموديل ما رجّعه
         if problem.reference["entry_point"] not in code:

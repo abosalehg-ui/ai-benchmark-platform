@@ -4,16 +4,23 @@ from __future__ import annotations
 import httpx
 
 from backend.providers._http import post_with_retry
-from backend.providers.base import BaseProvider, ModelResponse, measure_latency
+from backend.providers.base import (
+    BaseProvider,
+    ModelResponse,
+    format_exception,
+    format_http_error,
+    measure_latency,
+)
 
 
 class CohereProvider(BaseProvider):
     name = "cohere"
     available_models = [
+        "command-a-plus-05-2026",
+        "command-a-03-2025",
         "command-r-plus-08-2024",
         "command-r-08-2024",
         "command-r7b-12-2024",
-        "command-light",
     ]
     API_URL = "https://api.cohere.com/v2/chat"
 
@@ -49,11 +56,11 @@ class CohereProvider(BaseProvider):
                 return ModelResponse(
                     text="",
                     model_id=model,
-                    error=f"HTTP {e.response.status_code}: {e.response.text[:200]}",
+                    error=format_http_error(self.name, model, e),
                 )
             except Exception as e:
                 return ModelResponse(
-                    text="", model_id=model, error=f"{type(e).__name__}: {e}"
+                    text="", model_id=model, error=format_exception(self.name, model, e)
                 )
 
         try:

@@ -6,6 +6,37 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
+from backend.logging_config import get_logger, redact
+
+logger = get_logger(__name__)
+
+
+def format_http_error(provider: str, model: str, exc: httpx.HTTPStatusError) -> str:
+    """يسجّل الخطأ كاملاً خادمياً ويرجع رسالة مختصرة ومنقّحة للعميل.
+
+    أجسام أخطاء المزوّدين قد تحوي معرّفات تنظيمية أو أجزاءً من المفتاح،
+    وكانت تُعاد للعميل حرفياً (200 حرف). الآن التفاصيل في اللوج فقط.
+    """
+    status = exc.response.status_code
+    body = redact(exc.response.text[:500])
+    logger.warning("%s/%s: HTTP %s — %s", provider, model, status, body)
+    hints = {
+        401: "مفتاح API غير صالح أو منتهي",
+        403: "المفتاح لا يملك صلاحية لهذا النموذج",
+        404: "النموذج غير موجود لدى المزوّد",
+        429: "تجاوزت حدّ المعدّل (rate limit) — جرّب لاحقاً",
+    }
+    hint = hints.get(status, "خطأ من المزوّد")
+    return f"HTTP {status}: {hint}"
+
+
+def format_exception(provider: str, model: str, exc: Exception) -> str:
+    """يسجّل استثناءً غير متوقّع ويرجع نصاً منقّحاً."""
+    logger.exception("%s/%s: فشل الاستدعاء", provider, model)
+    return redact(f"{type(exc).__name__}: {exc}")
+
 
 @dataclass
 class ModelResponse:
