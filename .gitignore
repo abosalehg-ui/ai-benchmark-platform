@@ -26,7 +26,7 @@ ENV/
 *.db
 *.sqlite
 *.sqlite3
-backend/data/
+data/
 
 # Logs
 *.log
@@ -44,3 +44,6 @@ build/
 
 # Node (if added later)
 node_modules/
+
+# الأصول المستضافة محلياً تُرفَع عمداً (Chart.js + الخطوط)
+!frontend/vendor/

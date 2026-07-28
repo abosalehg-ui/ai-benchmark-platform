@@ -3,7 +3,13 @@ from __future__ import annotations
 
 import httpx
 
-from backend.providers.base import BaseProvider, ModelResponse, measure_latency
+from backend.providers.base import (
+    BaseProvider,
+    ModelResponse,
+    format_exception,
+    format_http_error,
+    measure_latency,
+)
 
 
 class OllamaProvider(BaseProvider):
@@ -39,7 +45,7 @@ class OllamaProvider(BaseProvider):
         except httpx.HTTPStatusError as e:
             return {
                 "models": [],
-                "error": f"Ollama رجّع خطأ HTTP {e.response.status_code}: {e.response.text[:200]}",
+                "error": format_http_error(self.name, "tags", e),
             }
         except Exception as e:
             return {
@@ -81,7 +87,7 @@ class OllamaProvider(BaseProvider):
                 return ModelResponse(
                     text="",
                     model_id=model,
-                    error=f"HTTP {e.response.status_code}: {e.response.text[:200]}",
+                    error=format_http_error(self.name, model, e),
                 )
             except httpx.ConnectError:
                 return ModelResponse(
@@ -91,7 +97,7 @@ class OllamaProvider(BaseProvider):
                 )
             except Exception as e:
                 return ModelResponse(
-                    text="", model_id=model, error=f"{type(e).__name__}: {e}"
+                    text="", model_id=model, error=format_exception(self.name, model, e)
                 )
 
         text = data.get("message", {}).get("content", "")

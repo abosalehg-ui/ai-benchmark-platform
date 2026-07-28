@@ -1,8 +1,10 @@
 """سجل البنشماركات."""
 from __future__ import annotations
 
+from backend.benchmarks.arabic_mcq import ArabicMCQBenchmark
 from backend.benchmarks.arabic_mmlu import ArabicMMLUBenchmark
 from backend.benchmarks.base import BaseBenchmark, Problem, Score
+from backend.benchmarks.filters import filter_problems
 from backend.benchmarks.gsm8k import GSM8KBenchmark
 from backend.benchmarks.humaneval import HumanEvalBenchmark
 from backend.benchmarks.llm_judge import LLMJudgeBenchmark
@@ -42,22 +44,31 @@ def _sorted_difficulties(values: set[str]) -> list[str]:
     return known + extras
 
 
+def _facets(name: str) -> tuple[int, list[str], list[str]]:
+    """ارجع (عدد المسائل، التصنيفات، مستويات الصعوبة) لبنشمارك.
+
+    ``BaseBenchmark.load`` يقرأ من cache على مستوى الملف، فالاستدعاء
+    المتكرّر هنا لا يلمس القرص.
+    """
+    try:
+        problems = BENCHMARKS[name]().load()
+    except FileNotFoundError:
+        return 0, [], []
+    categories = sorted(
+        {p.metadata.get("category") for p in problems if p.metadata.get("category")}
+    )
+    difficulties = _sorted_difficulties(
+        {p.metadata.get("difficulty") for p in problems if p.metadata.get("difficulty")}
+    )
+    return len(problems), categories, difficulties
+
+
 def list_benchmarks() -> list[dict]:
     """قائمة بالبنشماركات لعرضها في الواجهة."""
     result = []
     for key, cls in BENCHMARKS.items():
         inst = cls()
-        try:
-            problems = inst.load()
-            count = len(problems)
-            categories = sorted({p.metadata.get("category") for p in problems if p.metadata.get("category")})
-            difficulties = _sorted_difficulties(
-                {p.metadata.get("difficulty") for p in problems if p.metadata.get("difficulty")}
-            )
-        except FileNotFoundError:
-            count = 0
-            categories = []
-            difficulties = []
+        count, categories, difficulties = _facets(key)
         result.append({
             "id": key,
             "name": inst.display_name,
@@ -74,30 +85,18 @@ def get_benchmark_categories(name: str) -> list[str]:
     """ارجع تصنيفات البنشمارك إذا كانت موجودة في الـ metadata."""
     if name not in BENCHMARKS:
         raise ValueError(f"بنشمارك غير معروف: {name}")
-    inst = BENCHMARKS[name]()
-    try:
-        problems = inst.load()
-    except FileNotFoundError:
-        return []
-    return sorted({p.metadata.get("category") for p in problems if p.metadata.get("category")})
+    return _facets(name)[1]
 
 
 def get_benchmark_difficulties(name: str) -> list[str]:
     """ارجع مستويات الصعوبة المتوفّرة في البنشمارك."""
     if name not in BENCHMARKS:
         raise ValueError(f"بنشمارك غير معروف: {name}")
-    inst = BENCHMARKS[name]()
-    try:
-        problems = inst.load()
-    except FileNotFoundError:
-        return []
-    return _sorted_difficulties(
-        {p.metadata.get("difficulty") for p in problems if p.metadata.get("difficulty")}
-    )
+    return _facets(name)[2]
 
 
 __all__ = [
-    "BENCHMARKS", "BaseBenchmark", "Problem", "Score",
-    "get_benchmark", "make_benchmark", "list_benchmarks",
+    "BENCHMARKS", "ArabicMCQBenchmark", "BaseBenchmark", "Problem", "Score",
+    "filter_problems", "get_benchmark", "make_benchmark", "list_benchmarks",
     "get_benchmark_categories", "get_benchmark_difficulties",
 ]

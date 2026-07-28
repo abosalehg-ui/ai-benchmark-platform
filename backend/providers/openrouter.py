@@ -8,7 +8,6 @@ class OpenRouterProvider(OpenAICompatibleProvider):
     name = "openrouter"
     available_models = [
         "deepseek/deepseek-chat",
-        "mistralai/mistral-large",
         "qwen/qwen-2.5-72b-instruct",
         "meta-llama/llama-3.3-70b-instruct",
     ]

@@ -4,13 +4,12 @@
 أن يقيّم الإجابة على مقياس 1-5 مع تبرير.
 
 تحذير: لو الحَكَم نفس عائلة النموذج المُختبَر، يحصل تحيّز. لذا نطلب من المستخدم
-اختيار حَكَم محايد (مثلاً: GPT-4o يحكم على Claude والعكس).
+اختيار حَكَم محايد (مثلاً: نموذج OpenAI يحكم على Claude والعكس).
 """
 from __future__ import annotations
 
-import re
-
 from backend.benchmarks.base import BaseBenchmark, Problem, Score
+from backend.benchmarks.parsing import extract_rating
 from backend.providers.base import BaseProvider, ModelResponse
 
 
@@ -63,29 +62,14 @@ class LLMJudgeBenchmark(BaseBenchmark):
 
     @staticmethod
     def extract_score(text: str) -> int | None:
-        m = re.search(r"الدرجة\s*:\s*([1-5])", text)
-        if m:
-            return int(m.group(1))
-        # احتياطياً: نبحث عن أي رقم 1-5 في الأسطر الأخيرة
-        last_lines = "\n".join(text.strip().split("\n")[-3:])
-        m = re.search(r"\b([1-5])\b", last_lines)
-        if m:
-            return int(m.group(1))
-        return None
+        return extract_rating(text, 1, 5)
 
-    async def evaluate(
+    async def _evaluate_response(
         self,
         problem: Problem,
         response: ModelResponse,
         judge_provider: BaseProvider | None = None,
     ) -> Score:
-        if response.is_error:
-            return Score(
-                problem_id=problem.id,
-                correct=False,
-                model_response=response.text,
-                error=response.error,
-            )
         if judge_provider is None:
             return Score(
                 problem_id=problem.id,
@@ -113,6 +97,7 @@ class LLMJudgeBenchmark(BaseBenchmark):
                 correct=False,
                 model_response=response.text,
                 error=f"خطأ في الحَكَم: {judge_response.error}",
+                judge_cost_usd=judge_response.cost_usd,
             )
 
         score_value = self.extract_score(judge_response.text)
@@ -122,6 +107,7 @@ class LLMJudgeBenchmark(BaseBenchmark):
                 correct=False,
                 model_response=response.text,
                 judgment=f"الحَكَم لم يعطِ درجة واضحة: {judge_response.text[:300]}",
+                judge_cost_usd=judge_response.cost_usd,
             )
 
         # نعتبرها "صحيحة" إذا الدرجة 4 أو 5

@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import sqlite3
+import threading
 import time
 import uuid
 from contextlib import contextmanager
@@ -130,16 +131,34 @@ def cache_clear() -> int:
         return cur.rowcount
 
 
+_local = threading.local()
+
+
 @contextmanager
 def get_conn():
-    # timeout=30 يمنح مهلة أطول قبل رفع "database is locked" تحت التزامن
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
+    """اتصال SQLite لكل خيط، يُعاد استخدامه بدل فتح/إغلاق لكل عملية.
+
+    كان كل استدعاء يفتح اتصالاً جديداً؛ مع 200 مسألة × عدّة نماذج تصبح
+    مئات دورات connect/commit/close أثناء البثّ، كلٌّ منها يعيد تحميل
+    الـ schema. الاتصال مرتبط بالخيط لأن كائنات sqlite3 ليست thread-safe،
+    ويُعاد فتحه تلقائياً إذا تغيّر ``DB_PATH`` (تفعله الاختبارات).
+    """
+    conn = getattr(_local, "conn", None)
+    if conn is not None and getattr(_local, "path", None) != DB_PATH:
+        conn.close()
+        conn = None
+    if conn is None:
+        # timeout=30 يمنح مهلة أطول قبل رفع "database is locked" تحت التزامن
+        conn = sqlite3.connect(DB_PATH, timeout=30)
+        conn.row_factory = sqlite3.Row
+        _local.conn = conn
+        _local.path = DB_PATH
     try:
         yield conn
         conn.commit()
-    finally:
-        conn.close()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def create_run(benchmark: str, n_problems: int, config: dict) -> str:
@@ -176,8 +195,10 @@ def insert_result(run_id: str, provider: str, model: str, problem_id: str, **kwa
                 kwargs.get("input_tokens", 0),
                 kwargs.get("output_tokens", 0),
                 kwargs.get("cost_usd", 0.0),
-                kwargs.get("response_text", "")[:5000],
-                kwargs.get("judgment", "")[:1000],
+                # ``or ""`` وليس القيمة الافتراضية وحدها: تمرير None صراحةً
+                # يتجاوز الافتراضي ويرفع TypeError فيُسقط الـ run كاملاً
+                (kwargs.get("response_text") or "")[:5000],
+                (kwargs.get("judgment") or "")[:1000],
                 kwargs.get("error"),
             ),
         )
@@ -188,7 +209,8 @@ def list_runs(limit: int = 50) -> list[dict]:
         rows = conn.execute(
             """SELECT r.*,
                 COUNT(res.id) as n_results,
-                AVG(res.raw_score) as avg_score,
+                AVG(CAST(res.correct AS REAL)) as avg_score,
+                AVG(res.raw_score) as avg_raw_score,
                 SUM(res.cost_usd) as total_cost
             FROM runs r
             LEFT JOIN results res ON res.run_id = r.id
@@ -206,11 +228,16 @@ def get_run(run_id: str) -> dict | None:
             return None
         run = dict(row)
         # تجميع النتائج مع متوسطات لكل (provider, model)
+        # ملاحظة مهمّة: ``accuracy`` مشتقّة من ``correct`` الثنائية حتى تكون
+        # من نفس الكمية التي يُحسب منها فاصل ويلسون. ``avg_raw_score`` مقياس
+        # منفصل ومستمر (tool_use يعطي 0.5، llm_judge يعطي 0.25/0.5/0.75)
+        # وكان خلطه مع الفاصل يعرض «78.5% ± 12.3» من مقياسين مختلفين.
         agg = conn.execute(
             """SELECT provider, model,
                 COUNT(*) as n,
                 SUM(correct) as n_correct,
-                AVG(raw_score) as accuracy,
+                AVG(CAST(correct AS REAL)) as accuracy,
+                AVG(raw_score) as avg_raw_score,
                 AVG(latency_ms) as avg_latency_ms,
                 SUM(input_tokens) as total_in_tokens,
                 SUM(output_tokens) as total_out_tokens,

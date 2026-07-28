@@ -62,8 +62,11 @@ def run(
             f"--cpus={DEFAULT_CPUS}",
             f"--pids-limit={DEFAULT_PIDS}",
             "--read-only",
-            "--tmpfs=/tmp:size=64m,exec",
+            # noexec: يُبطل تنفيذ ملفات يكتبها الكود في /tmp، وهو ما كان
+            # يُضعف فائدة --read-only. الكود نفسه يُنفَّذ من /sandbox المركّب ro
+            "--tmpfs=/tmp:size=64m,noexec,nosuid,nodev",
             "--security-opt=no-new-privileges",
+            "--cap-drop=ALL",  # الحاوية لا تحتاج أي قدرة نواة
             "--user=65534:65534",  # nobody:nogroup
             "-v", f"{tmpdir}:/sandbox:ro",
             "-w", "/sandbox",

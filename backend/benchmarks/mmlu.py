@@ -1,9 +1,8 @@
 """بنشمارك MMLU — أسئلة متعددة الخيارات في تخصصات متنوعة."""
 from __future__ import annotations
 
-import re
-
 from backend.benchmarks.base import BaseBenchmark, Problem, Score
+from backend.benchmarks.parsing import LATIN_LETTERS, extract_latin_letter
 from backend.providers.base import BaseProvider, ModelResponse
 
 
@@ -34,41 +33,22 @@ class MMLUBenchmark(BaseBenchmark):
 
     def build_prompt(self, problem: Problem) -> str:
         choices = problem.metadata["choices"]
-        letters = ["A", "B", "C", "D"]
-        formatted = "\n".join(f"{l}. {c}" for l, c in zip(letters, choices))
+        formatted = "\n".join(
+            f"{letter}. {choice}"
+            for letter, choice in zip(LATIN_LETTERS, choices)
+        )
         return (
             f"{problem.prompt}\n\n{formatted}\n\n"
             f"Reply with: Answer: <letter>"
         )
 
-    @staticmethod
-    def extract_letter(text: str) -> str | None:
-        """استخراج الحرف من رد النموذج."""
-        # نبحث عن "Answer: X" أولاً
-        m = re.search(r"Answer\s*:\s*([A-D])", text, re.IGNORECASE)
-        if m:
-            return m.group(1).upper()
-        # احتياطياً: أول حرف A-D معزول
-        m = re.search(r"\b([A-D])\b", text)
-        if m:
-            return m.group(1).upper()
-        return None
-
-    async def evaluate(
+    async def _evaluate_response(
         self,
         problem: Problem,
         response: ModelResponse,
         judge_provider: BaseProvider | None = None,
     ) -> Score:
-        if response.is_error:
-            return Score(
-                problem_id=problem.id,
-                correct=False,
-                model_response=response.text,
-                error=response.error,
-            )
-
-        predicted = self.extract_letter(response.text)
+        predicted = extract_latin_letter(response.text)
         expected = problem.reference.upper() if isinstance(problem.reference, str) else None
         correct = predicted is not None and predicted == expected
 

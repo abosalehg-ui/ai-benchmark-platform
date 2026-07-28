@@ -4,15 +4,24 @@ from __future__ import annotations
 import httpx
 
 from backend.providers._http import post_with_retry
-from backend.providers.base import BaseProvider, ModelResponse, measure_latency
+from backend.providers.base import (
+    BaseProvider,
+    ModelResponse,
+    format_exception,
+    format_http_error,
+    measure_latency,
+)
 
 
 class GeminiProvider(BaseProvider):
     name = "gemini"
     available_models = [
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
-        "gemini-2.0-flash-exp",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-pro-preview",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
     ]
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -43,11 +52,11 @@ class GeminiProvider(BaseProvider):
                 return ModelResponse(
                     text="",
                     model_id=model,
-                    error=f"HTTP {e.response.status_code}: {e.response.text[:200]}",
+                    error=format_http_error(self.name, model, e),
                 )
             except Exception as e:
                 return ModelResponse(
-                    text="", model_id=model, error=f"{type(e).__name__}: {e}"
+                    text="", model_id=model, error=format_exception(self.name, model, e)
                 )
 
         try:
