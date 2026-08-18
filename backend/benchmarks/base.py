@@ -34,6 +34,31 @@ class Score:
     judge_cost_usd: float = 0.0  # تكلفة استدعاء الحَكَم (llm_judge) إن وُجد
 
 
+@dataclass
+class JudgeSpec:
+    """نموذج الحَكَم صراحةً: المزوّد + اسم النموذج.
+
+    كان النموذج يُمرَّر بتحوير ``judge_provider.available_models`` من ``runner``
+    قبل الاستدعاء — قناة جانبية تنكسر بصمت: أي استدعاء لـ ``evaluate`` من خارج
+    ``runner`` كان يقع على أوّل نموذج في كتالوج المزوّد بدل النموذج المقصود.
+    """
+    provider: BaseProvider
+    model: str
+
+
+@dataclass
+class EvalContext:
+    """كل ما يحتاجه التقييم خارج المسألة والاستجابة.
+
+    ``enforce_safety`` كان يصل إلى ``RunRequest`` ثم لا يُقرأ أبداً، فخانة
+    «تفعيل فحص أمان الكود» في الواجهة كانت بلا أي أثر. تمريره هنا يُكمل المسار
+    من الواجهة إلى الـ sandbox.
+    """
+    judge: JudgeSpec | None = None
+    enforce_safety: bool = True
+    use_cache: bool = True
+
+
 @lru_cache(maxsize=32)
 def _load_raw(dataset_file: str) -> tuple[dict, ...]:
     """يقرأ ملف الداتاست من القرص مرّة واحدة لكل عملية.
@@ -56,6 +81,10 @@ class BaseBenchmark(ABC):
     display_name: str = "Base"
     description: str = ""
     dataset_file: str = ""
+    #: هل يحتاج هذا البنشمارك نموذج حَكَم؟ يفرضه الخادم قبل بدء أي إنفاق
+    needs_judge: bool = False
+    #: هل ينفّذ هذا البنشمارك كوداً يُنتجه النموذج؟ يقرّر تحذير الـ sandbox
+    executes_code: bool = False
 
     def __init__(self, dataset_file: str | None = None):
         self.dataset_file = dataset_file or self.dataset_file
@@ -78,7 +107,7 @@ class BaseBenchmark(ABC):
         self,
         problem: Problem,
         response: ModelResponse,
-        judge_provider: BaseProvider | None = None,
+        ctx: EvalContext | None = None,
     ) -> Score:
         """تقييم استجابة النموذج.
 
@@ -93,14 +122,14 @@ class BaseBenchmark(ABC):
                 model_response=response.text,
                 error=response.error,
             )
-        return await self._evaluate_response(problem, response, judge_provider)
+        return await self._evaluate_response(problem, response, ctx or EvalContext())
 
     @abstractmethod
     async def _evaluate_response(
         self,
         problem: Problem,
         response: ModelResponse,
-        judge_provider: BaseProvider | None = None,
+        ctx: EvalContext,
     ) -> Score:
         """التقييم الفعلي — يُستدعى فقط عندما تكون الاستجابة سليمة."""
         ...

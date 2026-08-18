@@ -8,12 +8,16 @@ export const state = {
   selectedCategories: new Set(),
   selectedDifficulties: new Set(),
   models: [],            // [{provider, model}]
+  judge: { provider: '', model: '' },  // اختيار المستخدم للحَكَم (llm_judge)
   ollamaModels: [],
   ollamaError: null,
   currentRunId: null,
-  currentRunData: null,
+  currentRunData: null,       // الملخّص فقط (بلا details)
+  loadedDetails: [],          // صفوف التفاصيل المحمّلة على صفحات
   liveData: {},          // { "provider:model": {...} }
   chart: null,
+  driftData: null,          // آخر استجابة /api/drift
+  driftChart: null,
   summaryRows: [],
   summarySort: { key: 'accuracy', dir: 'desc' },
 };

@@ -47,21 +47,24 @@ class ClaudeProvider(BaseProvider):
         if system:
             body["system"] = system
 
+        # مسارات الفشل تخرج من كتلة القياس أوّلاً حتى يُضبَط ``elapsed_ms``:
+        # القراءة داخل الكتلة كانت دائماً صفراً (``__exit__`` لم يعمل بعد)،
+        # فيضيع الفرق بين رفض فوري بـ401 ومهلة 120 ثانية
+        error: str | None = None
+        data: dict = {}
         with measure_latency() as t:
             try:
                 r = await post_with_retry(self.API_URL, headers=headers, json=body, timeout=120.0)
                 data = r.json()
             except httpx.HTTPStatusError as e:
-                return ModelResponse(
-                    text="",
-                    model_id=model,
-                    error=format_http_error(self.name, model, e),
-                    latency_ms=t.elapsed_ms if hasattr(t, "elapsed_ms") else 0,
-                )
+                error = format_http_error(self.name, model, e)
             except Exception as e:
-                return ModelResponse(
-                    text="", model_id=model, error=format_exception(self.name, model, e)
-                )
+                error = format_exception(self.name, model, e)
+
+        if error is not None:
+            return ModelResponse(
+                text="", model_id=model, error=error, latency_ms=t.elapsed_ms
+            )
 
         text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
         usage = data.get("usage", {})

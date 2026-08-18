@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import asyncio
 
-from backend.benchmarks.base import BaseBenchmark, Problem, Score
-from backend.providers.base import BaseProvider, ModelResponse
+from backend.benchmarks.base import BaseBenchmark, EvalContext, Problem, Score
+from backend.providers.base import ModelResponse
 from backend.sandbox import extract_python_code, run_python_code
 
 
@@ -13,6 +13,7 @@ class HumanEvalBenchmark(BaseBenchmark):
     display_name = "HumanEval (برمجة)"
     description = "تقييم قدرة النموذج على كتابة دوال بايثون صحيحة."
     dataset_file = "humaneval_sample.json"
+    executes_code = True
 
     @property
     def system_prompt(self) -> str:
@@ -44,7 +45,7 @@ class HumanEvalBenchmark(BaseBenchmark):
         self,
         problem: Problem,
         response: ModelResponse,
-        judge_provider: BaseProvider | None = None,
+        ctx: EvalContext,
     ) -> Score:
         code = extract_python_code(response.text)
         # نضيف توقيع الدالة الأصلي إذا الموديل ما رجّعه
@@ -56,8 +57,12 @@ class HumanEvalBenchmark(BaseBenchmark):
             + f"\ncheck({problem.reference['entry_point']})"
         )
         # نشغّل الـ sandbox المتزامن في thread منفصل حتى لا نحجب حلقة الأحداث
-        # (subprocess/docker قد يستغرق ثوانٍ ويجمّد الخادم بالكامل لولا ذلك)
-        result = await asyncio.to_thread(run_python_code, code, test_code, timeout=10)
+        # (subprocess/docker قد يستغرق ثوانٍ ويجمّد الخادم بالكامل لولا ذلك).
+        # ``enforce_safety`` يأتي من خانة الواجهة عبر ``EvalContext`` — كان
+        # يتوقّف عند ``RunRequest`` ولا يصل إلى هنا إطلاقاً.
+        result = await asyncio.to_thread(
+            run_python_code, code, test_code, 10, ctx.enforce_safety,
+        )
 
         return Score(
             problem_id=problem.id,

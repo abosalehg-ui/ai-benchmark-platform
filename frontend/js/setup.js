@@ -42,6 +42,7 @@ export function renderBenchmarks() {
       card.setAttribute('aria-pressed', 'true');
       renderChips('categories', b.categories || [], state.selectedCategories);
       renderChips('difficulties', b.difficulties || [], state.selectedDifficulties);
+      renderJudgePicker();  // يظهر/يختفي حسب needs_judge للبنشمارك المختار
       updateCostEstimate();
     });
     return card;
@@ -157,6 +158,8 @@ export function renderModels() {
     return row;
   });
   replaceChildren(container, rows);
+  // تغيير النماذج قد يجعل الحَكَم من نفس عائلتها
+  if (document.getElementById('judge-bias-warning')) renderJudgeBiasWarning();
 }
 
 export async function loadOllamaModels() {
@@ -209,12 +212,17 @@ export function updateCostEstimate() {
   }, 400);
 }
 
+/** يقصّ عدداً مكتوباً على [1, max]. دالة نقيّة قابلة للاختبار بلا DOM. */
+export function clampProblemCount(raw, max, fallback = 5) {
+  const n = parseInt(raw ?? '', 10);
+  if (!Number.isFinite(n)) return Math.min(fallback, max);
+  return Math.min(Math.max(n, 1), max);
+}
+
 /** يقصّ عدد المسائل على حدود الخادم — المتصفح لا يفرض max على القيم المكتوبة. */
 export function clampProblems() {
   const input = document.getElementById('n-problems');
-  let n = parseInt(input.value || '5', 10);
-  if (!Number.isFinite(n)) n = 5;
-  n = Math.min(Math.max(n, 1), state.config.max_problems);
+  const n = clampProblemCount(input.value, state.config.max_problems);
   if (String(n) !== input.value) input.value = String(n);
   return n;
 }
@@ -250,3 +258,85 @@ export function saveKeys() {
 }
 
 export { getKey };
+
+/* ============ الحَكَم ============ */
+
+/**
+ * مزوّدو الحَكَم المدعومون. الاختيار صار للمستخدم بدل تخمين الواجهة:
+ * كانت تأخذ أوّل مزوّد لديه مفتاح وآخر نموذج في قائمته على افتراض أنه
+ * الأرخص — وهو افتراض خاطئ لـ OpenAI (o3 بـ$2/$8 بينما gpt-5.4-nano
+ * بـ$0.20/$1.25)، وكان يُنتج حَكَماً من عائلة النموذج المُختبَر نفسه.
+ */
+const JUDGE_PROVIDERS = ['anthropic', 'openai', 'gemini'];
+
+export function renderJudgePicker() {
+  const wrap = document.getElementById('judge-wrap');
+  const bench = state.benchmarks.find(b => b.id === state.selectedBenchmark);
+  if (!bench?.needs_judge) {
+    wrap.classList.add('hidden');
+    return;
+  }
+  wrap.classList.remove('hidden');
+
+  const provSel = document.getElementById('judge-provider');
+  const modelSel = document.getElementById('judge-model');
+  const available = JUDGE_PROVIDERS.filter(p => state.providers.some(x => x.id === p));
+
+  if (!state.judge.provider || !available.includes(state.judge.provider)) {
+    // نفضّل مزوّداً لدى المستخدم مفتاحه، وإلا أوّل مزوّد مدعوم
+    state.judge.provider = available.find(p => getKey(p)) || available[0] || '';
+    state.judge.model = '';
+  }
+
+  replaceChildren(provSel, ...available.map(p =>
+    h('option', { value: p, selected: p === state.judge.provider }, p)
+  ));
+
+  const models = state.providers.find(p => p.id === state.judge.provider)?.models || [];
+  if (!models.includes(state.judge.model)) state.judge.model = models[0] || '';
+  replaceChildren(modelSel, ...models.map(m =>
+    h('option', { value: m, selected: m === state.judge.model }, m)
+  ));
+
+  renderJudgeBiasWarning();
+}
+
+/** يحذّر حين يكون الحَكَم من عائلة أحد النماذج المُختبَرة. */
+export function renderJudgeBiasWarning() {
+  const box = document.getElementById('judge-bias-warning');
+  const clash = state.models.some(m => m.provider === state.judge.provider);
+  if (!clash || !state.judge.provider) {
+    box.hidden = true;
+    return;
+  }
+  box.textContent =
+    `⚠ الحَكَم من ${state.judge.provider} وأنت تختبر نموذجاً من نفس المزوّد — `
+    + 'النتيجة قد تكون متحيّزة لصالحه. اختر حَكَماً من عائلة أخرى.';
+  box.hidden = false;
+}
+
+export function initJudgePicker() {
+  const provSel = document.getElementById('judge-provider');
+  const modelSel = document.getElementById('judge-model');
+  provSel.addEventListener('change', () => {
+    state.judge.provider = provSel.value;
+    state.judge.model = '';
+    renderJudgePicker();
+  });
+  modelSel.addEventListener('change', () => {
+    state.judge.model = modelSel.value;
+  });
+}
+
+/** يبني جسم الحَكَم للطلب، أو رسالة خطأ إن كان الاختيار ناقصاً. */
+export function collectJudge() {
+  const { provider, model } = state.judge;
+  if (!provider || !model) {
+    return { error: 'اختر مزوّد ونموذج الحَكَم أوّلاً' };
+  }
+  const key = getKey(provider);
+  if (!key) {
+    return { error: `مفتاح ${provider} مفقود — الحَكَم يحتاجه. أدخله من تبويب «المفاتيح»` };
+  }
+  return { judge: { provider, model, api_key: key } };
+}

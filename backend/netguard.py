@@ -59,7 +59,13 @@ def validate_base_url(url: str) -> str:
     if host in allowed:
         return url.strip().rstrip("/")
 
-    # نحلّ الاسم ونفحص كل العناوين المُرجَعة (يمنع DNS rebinding البسيط)
+    # نحلّ الاسم ونفحص كل العناوين المُرجَعة.
+    #
+    # حدّ معروف: هذا **لا** يمنع DNS rebinding. نحن نحلّ الاسم للفحص، ثم يحلّه
+    # httpx من جديد عند الطلب — من يتحكّم بالـ DNS يستطيع إرجاع عنوان عام في
+    # الاستعلام الأوّل و127.0.0.1 في الثاني. الأثر محدود لأن المستخدم هو من
+    # يكتب ``base_url`` في أداة محلية، لكن لا تبنِ قرار نشر على أن الفجوة مغلقة:
+    # إغلاقها يحتاج تثبيت العنوان المُتحقَّق منه في الاتصال نفسه.
     try:
         infos = socket.getaddrinfo(host, parsed.port or 80, proto=socket.IPPROTO_TCP)
     except socket.gaierror as e:

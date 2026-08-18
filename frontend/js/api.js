@@ -39,7 +39,9 @@ async function request(path, options = {}) {
       ...options,
       headers: { ...(options.headers || {}), ...authHeaders() },
     });
-  } catch (e) {
+  } catch {
+    // سبب fetch الأصلي غير مفيد للمستخدم («Failed to fetch»)؛ الرسالة
+    // العربية أوضح، والتفاصيل تظهر في console المتصفّح على أي حال
     throw new ApiError('تعذّر الاتصال بالخادم. تأكّد أنه يعمل على المنفذ 8000.', 0, null);
   }
   if (!res.ok) {
@@ -73,8 +75,21 @@ export const api = {
   ollamaModels: url => getJSON('/api/ollama/models?base_url=' + encodeURIComponent(url)),
   estimate: body => postJSON('/api/estimate', body),
   runs: () => getJSON('/api/runs'),
+  /** ملخّص الـ run بلا التفاصيل الثقيلة. */
   run: id => getJSON(`/api/runs/${encodeURIComponent(id)}`),
+  /** صفحة من نتائج الـ run. التفاصيل الكاملة قد تتجاوز 10MB. */
+  runDetails: (id, { limit = 200, offset = 0, provider, model } = {}) => {
+    const q = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (provider) q.set('provider', provider);
+    if (model) q.set('model', model);
+    return getJSON(`/api/runs/${encodeURIComponent(id)}/details?${q}`);
+  },
   h2h: id => getJSON(`/api/runs/${encodeURIComponent(id)}/h2h`),
+  /** سلاسل الانحراف عبر الزمن لبنشمارك واحد. */
+  drift: (benchmark, { includePartial = false } = {}) => {
+    const q = new URLSearchParams({ benchmark, include_partial: String(includePartial) });
+    return getJSON(`/api/drift?${q}`);
+  },
   deleteRun: id => request(`/api/runs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   cacheStats: () => getJSON('/api/cache/stats'),
   clearCache: async () => (await request('/api/cache', { method: 'DELETE' })).json(),

@@ -247,3 +247,135 @@ def test_cache_stats_and_clear(client, temp_db):
     assert client.get("/api/cache/stats").json()["entries"] == 1
     assert client.delete("/api/cache").json()["cleared"] == 1
     assert client.get("/api/cache/stats").json()["entries"] == 0
+
+
+# ============ التحقّق من الحَكَم خادمياً ============
+
+def test_run_rejects_llm_judge_without_a_judge(client):
+    """كان يُقبَل بـ200، يُنفق كل الاستدعاءات، ثم يُحفظ الـ run بحالة completed."""
+    r = client.post("/api/run", json={
+        "benchmark": "llm_judge",
+        "n_problems": 2,
+        "targets": [{"provider": "ollama", "model": "llama3"}],
+    })
+    assert r.status_code == 400
+    assert "حَكَم" in r.json()["detail"]
+
+
+def test_run_accepts_llm_judge_with_a_judge(client):
+    r = client.post("/api/run", json={
+        "benchmark": "llm_judge",
+        "n_problems": 1,
+        "targets": [{"provider": "ollama", "model": "llama3"}],
+        "judge": {"provider": "anthropic", "model": "claude-haiku-4-5", "api_key": "k"},
+    })
+    assert r.status_code == 200
+
+
+def test_benchmarks_endpoint_exposes_judge_and_code_flags(client):
+    by_id = {b["id"]: b for b in client.get("/api/benchmarks").json()["benchmarks"]}
+    assert by_id["llm_judge"]["needs_judge"] is True
+    assert by_id["humaneval"]["executes_code"] is True
+
+
+# ============ التفاصيل المقسّمة ============
+
+def _seed_many(db, n=5):
+    run_id = db.create_run("saudi_legal", n, {})
+    for i in range(n):
+        db.insert_result(
+            run_id, "anthropic", "claude-opus-5", f"p{i}",
+            correct=i % 2 == 0, raw_score=1.0, latency_ms=1.0,
+            input_tokens=1, output_tokens=1, cost_usd=0.0,
+            response_text=f"رد {i}", judgment="",
+        )
+    db.insert_result(
+        run_id, "openai", "gpt-5-mini", "p0",
+        correct=True, raw_score=1.0, latency_ms=1.0,
+        input_tokens=1, output_tokens=1, cost_usd=0.0,
+        response_text="رد آخر", judgment="",
+    )
+    db.finish_run(run_id)
+    return run_id
+
+
+def test_run_summary_omits_heavy_details_by_default(client, temp_db):
+    """2000 صفّاً بردود 5000 حرف = استجابة تتجاوز 10MB كانت تُطلب ثلاث مرّات."""
+    run_id = _seed_many(temp_db)
+    body = client.get(f"/api/runs/{run_id}").json()
+    assert "details" not in body
+    assert body["models"], "الملخّص المجمّع يجب أن يبقى"
+
+
+def test_run_summary_can_still_include_details_explicitly(client, temp_db):
+    run_id = _seed_many(temp_db)
+    body = client.get(f"/api/runs/{run_id}", params={"include_details": "true"}).json()
+    assert len(body["details"]) == 6
+
+
+def test_details_endpoint_paginates(client, temp_db):
+    run_id = _seed_many(temp_db)
+    first = client.get(f"/api/runs/{run_id}/details", params={"limit": 2}).json()
+    assert first["total"] == 6
+    assert len(first["details"]) == 2
+
+    second = client.get(
+        f"/api/runs/{run_id}/details", params={"limit": 2, "offset": 2}
+    ).json()
+    assert len(second["details"]) == 2
+    assert {d["problem_id"] for d in first["details"]} != {
+        d["problem_id"] for d in second["details"]
+    }
+
+
+def test_details_endpoint_filters_by_model(client, temp_db):
+    run_id = _seed_many(temp_db)
+    body = client.get(
+        f"/api/runs/{run_id}/details", params={"provider": "openai", "model": "gpt-5-mini"}
+    ).json()
+    assert body["total"] == 1
+    assert body["details"][0]["response_text"] == "رد آخر"
+
+
+def test_details_endpoint_404s_for_missing_run(client):
+    assert client.get("/api/runs/deadbeef/details").status_code == 404
+
+
+def test_details_endpoint_rejects_absurd_limits(client, temp_db):
+    run_id = _seed_many(temp_db)
+    assert client.get(f"/api/runs/{run_id}/details", params={"limit": 0}).status_code == 422
+    assert client.get(f"/api/runs/{run_id}/details", params={"limit": 5000}).status_code == 422
+    assert client.get(f"/api/runs/{run_id}/details", params={"offset": -1}).status_code == 422
+
+
+# ============ التقدير يسمّي النماذج بلا سعر ============
+
+def test_estimate_names_unpriced_models(client):
+    r = client.post("/api/estimate", json={
+        "benchmark": "saudi_legal",
+        "n_problems": 2,
+        "targets": [
+            {"provider": "anthropic", "model": "claude-opus-5"},
+            {"provider": "cohere", "model": "command-a-03-2025"},
+        ],
+    })
+    body = r.json()
+    assert body["unpriced_models"] == ["cohere/command-a-03-2025"]
+
+
+def test_estimate_reports_no_unpriced_when_all_known(client):
+    r = client.post("/api/estimate", json={
+        "benchmark": "saudi_legal",
+        "n_problems": 2,
+        "targets": [{"provider": "anthropic", "model": "claude-opus-5"}],
+    })
+    assert r.json()["unpriced_models"] == []
+
+
+# ============ حالة الـ sandbox ============
+
+def test_sandbox_status_note_warns_when_not_isolated(client, monkeypatch):
+    monkeypatch.setenv("SANDBOX_BACKEND", "subprocess")
+    body = client.get("/api/sandbox/status").json()
+    assert body["is_isolated"] is False
+    assert "بلا عزل حقيقي" in body["note"]

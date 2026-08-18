@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from backend.benchmarks.arabic_mcq import ArabicMCQBenchmark
 from backend.benchmarks.arabic_mmlu import ArabicMMLUBenchmark
-from backend.benchmarks.base import BaseBenchmark, Problem, Score
+from backend.benchmarks.base import BaseBenchmark, EvalContext, JudgeSpec, Problem, Score
 from backend.benchmarks.filters import filter_problems
 from backend.benchmarks.gsm8k import GSM8KBenchmark
 from backend.benchmarks.humaneval import HumanEvalBenchmark
@@ -74,7 +74,10 @@ def list_benchmarks() -> list[dict]:
             "name": inst.display_name,
             "description": inst.description,
             "problems_count": count,
-            "needs_judge": key == "llm_judge",
+            # من خاصية الصنف لا من اسم مكتوب يدوياً: الاسم كان مكرّراً هنا
+            # وفي فحص الخادم، فأي بنشمارك حَكَم جديد ينسى أحدهما
+            "needs_judge": inst.needs_judge,
+            "executes_code": inst.executes_code,
             "categories": categories,
             "difficulties": difficulties,
         })
@@ -96,7 +99,8 @@ def get_benchmark_difficulties(name: str) -> list[str]:
 
 
 __all__ = [
-    "BENCHMARKS", "ArabicMCQBenchmark", "BaseBenchmark", "Problem", "Score",
-    "filter_problems", "get_benchmark", "make_benchmark", "list_benchmarks",
-    "get_benchmark_categories", "get_benchmark_difficulties",
+    "BENCHMARKS", "ArabicMCQBenchmark", "BaseBenchmark", "EvalContext",
+    "JudgeSpec", "Problem", "Score", "filter_problems", "get_benchmark",
+    "make_benchmark", "list_benchmarks", "get_benchmark_categories",
+    "get_benchmark_difficulties",
 ]

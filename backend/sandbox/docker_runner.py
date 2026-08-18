@@ -50,6 +50,13 @@ def run(
         script_path = os.path.join(tmpdir, "solution.py")
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(full_code)
+        # الحاوية تعمل بمستخدم nobody (65534)، و``TemporaryDirectory`` يُنشئ
+        # المجلّد بصلاحية 0700 لمالكه على المضيف. الملف وحده بـ0644 لا يكفي:
+        # بلا صلاحية العبور (x) على المجلّد يفشل التشغيل بـ
+        # «can't open file '/sandbox/solution.py': Permission denied» —
+        # أي أن تحصين ``--user`` كان يكسر الـ sandbox بصمت بدل أن يؤمّنه.
+        # المحتوى كود مولَّد من نموذج بلا أسرار، والمجلّد مؤقّت ويُحذف فوراً.
+        os.chmod(tmpdir, 0o755)
         os.chmod(script_path, 0o644)
 
         name = f"benchsbx-{uuid.uuid4().hex[:10]}"

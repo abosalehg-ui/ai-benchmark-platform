@@ -132,15 +132,25 @@ def extract_json_object(text: str, *, required_key: str | None = None) -> dict |
 
 
 def extract_rating(text: str, low: int = 1, high: int = 5) -> int | None:
-    """استخراج درجة الحَكَم (``الدرجة: <رقم>`` ثم احتياطاً آخر الأسطر)."""
+    """استخراج درجة الحَكَم (``الدرجة: <رقم>`` ثم احتياطاً آخر الأسطر).
+
+    نأخذ **آخر** مطابقة لا أوّلها: الحَكَم مُوجَّه ليكتب التبرير أوّلاً والدرجة
+    في السطر الأخير، فأي رقم مبكّر (اقتباس من الإجابة، أو درجة مزروعة من
+    النموذج المُختبَر) كان يفوز على الدرجة الحقيقية.
+
+    ونرجع ``None`` عند وجود درجتين صريحتين مختلفتين: إشارة إلى تلاعب أو ارتباك،
+    والصمت أصدق من رقم مخمَّن — الفرع الأعلى يعرضها «الحَكَم لم يعطِ درجة واضحة».
+    """
     if not text:
         return None
     rng = f"[{low}-{high}]"
-    m = re.search(rf"الدرجة\s*:\s*({rng})", text)
-    if m:
-        return int(m.group(1))
+    explicit = re.findall(rf"الدرجة\s*:\s*({rng})", text)
+    if explicit:
+        if len(set(explicit)) > 1:
+            return None
+        return int(explicit[-1])
     last_lines = "\n".join(text.strip().split("\n")[-3:])
-    m = re.search(rf"\b({rng})\b", last_lines)
-    if m:
-        return int(m.group(1))
+    fallback = re.findall(rf"\b({rng})\b", last_lines)
+    if fallback:
+        return int(fallback[-1])
     return None

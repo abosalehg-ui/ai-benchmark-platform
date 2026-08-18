@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,13 +24,22 @@ from backend.benchmarks import (
     list_benchmarks,
     make_benchmark,
 )
+from backend.drift import drift_series
 from backend.logging_config import get_logger, setup_logging
 from backend.netguard import UnsafeURLError, validate_base_url
 from backend.pricing import PRICING, PRICING_LAST_VERIFIED, get_price
 from backend.providers import PROVIDERS
+from backend.providers._http import close_http_client
 from backend.providers.base import estimate_tokens_from_text
 from backend.providers.ollama import OllamaProvider
-from backend.runner import ModelTarget, RunRequest, event_to_sse, run_benchmark
+from backend.runner import (
+    ModelTarget,
+    RunRequest,
+    event_to_sse,
+    run_benchmark,
+    unpriced_targets,
+)
+from backend.sandbox import backend_status
 from backend.security import (
     SecurityHeadersMiddleware,
     api_token_configured,
@@ -51,12 +60,20 @@ ProviderName = Literal[tuple(PROVIDERS)]  # type: ignore[valid-type]
 async def lifespan(app: FastAPI):
     setup_logging()
     db.init_db()
+    sandbox = backend_status()
     logger.info(
-        "المنصّة جاهزة — sandbox=%s، مصادقة=%s",
-        os.getenv("SANDBOX_BACKEND", "subprocess"),
+        "المنصّة جاهزة — sandbox=%s (%s)، مصادقة=%s",
+        sandbox["backend"],
+        "معزول" if sandbox["is_isolated"] else "بلا عزل",
         "مفعّلة" if api_token_configured() else "معطّلة (بلا API_TOKEN)",
     )
-    yield
+    if not sandbox["is_isolated"]:
+        logger.warning("sandbox بلا عزل — %s", sandbox["note"])
+    try:
+        yield
+    finally:
+        # العميل المشترك يعيش بعمر العملية؛ إغلاقه هنا يمنع تسريب الاتصالات
+        await close_http_client()
 
 
 app = FastAPI(title="AI Benchmark Platform", version="0.2.0", lifespan=lifespan)
@@ -233,10 +250,17 @@ def estimate_cost(req: EstimateRequestBody):
         })
         grand_total += cost
 
+    # نسمّي النماذج بلا سعر بدل عدّها فقط: هي نفسها التي يعجز حدّ الميزانية
+    # عن رؤيتها أثناء التشغيل، فالمستخدم يستحق معرفة أيّها قبل أن يضع حدّاً
+    unpriced = unpriced_targets([
+        ModelTarget(provider=t.provider, model=t.model, api_key="") for t in req.targets
+    ])
+
     return {
         "total_usd": round(grand_total, 6),
         "per_target": per_target,
         "n_problems_effective": len(problems),
+        "unpriced_models": unpriced,
         "notes": "تقدير تقريبي مبنياً على طول النص (~3 حرف/توكن). التكلفة الفعلية قد تختلف.",
     }
 
@@ -246,6 +270,14 @@ async def post_run(req: RunRequestBody, request: Request):
     """تشغيل بنشمارك مع streaming لحظي عبر SSE."""
     if req.benchmark not in BENCHMARKS:
         raise HTTPException(404, f"بنشمارك غير معروف: {req.benchmark}")
+
+    # التحقّق كان في الواجهة فقط: طلب مباشر بلا حَكَم كان يُقبَل بـ200، ويُنفق
+    # تكلفة كل الاستدعاءات، ثم تفشل كل مسألة ويُحفظ الـ run بحالة "completed"
+    if BENCHMARKS[req.benchmark].needs_judge and req.judge is None:
+        raise HTTPException(
+            400,
+            f"بنشمارك «{req.benchmark}» يحتاج نموذج حَكَم — حدّد judge في الطلب.",
+        )
 
     targets = [
         ModelTarget(
@@ -294,11 +326,53 @@ def get_runs():
 
 
 @app.get("/api/runs/{run_id}", dependencies=protected)
-def get_run(run_id: str):
-    run = db.get_run(run_id)
+def get_run(run_id: str, include_details: bool = False):
+    """ملخّص الـ run.
+
+    ``details`` **لا تُعاد افتراضياً**: تشغيل بالحدّ الأقصى (200 مسألة × 10
+    نماذج) يعطي 2000 صفّاً بردود حتى 5000 حرف — استجابة تتجاوز 10 ميغابايت
+    كانت تُطلب ثلاث مرّات لنفس الـ run. استخدم ``/details`` المقسّم بدلاً منها،
+    أو ``include_details=true`` لسلوك التوافق القديم.
+    """
+    run = db.get_run(run_id, include_details=include_details)
     if not run:
         raise HTTPException(404, "Run غير موجود")
     return run
+
+
+@app.get("/api/runs/{run_id}/details", dependencies=protected)
+def get_run_details(
+    run_id: str,
+    limit: int = Query(default=200, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
+    provider: str | None = None,
+    model: str | None = None,
+):
+    """تفاصيل نتائج الـ run مقسّمة على صفحات، مع فلترة اختيارية بالنموذج."""
+    if not db.run_exists(run_id):
+        raise HTTPException(404, "Run غير موجود")
+    return db.get_run_details(
+        run_id, limit=limit, offset=offset, provider=provider, model=model
+    )
+
+
+@app.get("/api/drift", dependencies=protected)
+def get_drift(
+    benchmark: str,
+    include_partial: bool = False,
+    max_runs: int = Query(default=50, ge=2, le=200),
+):
+    """تتبّع انحراف النماذج عبر الزمن على بنشمارك واحد.
+
+    يربط تشغيلات نفس (بنشمارك، نموذج) ليُظهر الاتجاه بدل أن يبقى كل تشغيل
+    جزيرة في السجل. النقاط تحمل بصمة نطاقها حتى لا يُقارَن تشغيل 10 مسائل
+    بتشغيل 200 ويُسمّى الفرق انحرافاً.
+    """
+    if benchmark not in BENCHMARKS:
+        raise HTTPException(404, f"بنشمارك غير معروف: {benchmark}")
+    return drift_series(
+        benchmark, include_partial=include_partial, max_runs=max_runs
+    )
 
 
 @app.get("/api/runs/{run_id}/h2h", dependencies=protected)
@@ -313,7 +387,8 @@ def get_run_h2h(run_id: str):
 @app.get("/api/runs/{run_id}/export", dependencies=protected)
 def export_run(run_id: str, format: str = "json"):
     """تصدير نتائج Run كاملة بصيغة JSON أو CSV."""
-    run = db.get_run(run_id)
+    # التصدير هو المكان الوحيد الذي يحتاج كل التفاصيل دفعةً واحدة
+    run = db.get_run(run_id, include_details=True)
     if not run:
         raise HTTPException(404, "Run غير موجود")
 
@@ -357,7 +432,6 @@ def delete_run(run_id: str):
 @app.get("/api/sandbox/status", dependencies=protected)
 def get_sandbox_status():
     """معلومات عن sandbox backend الحالي (docker / subprocess)."""
-    from backend.sandbox import backend_status
     return backend_status()
 
 

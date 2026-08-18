@@ -29,6 +29,8 @@
               aria-selected="true" aria-controls="tab-run" data-tab="run">تشغيل اختبار</button>
       <button class="tab" role="tab" id="tab-btn-history" tabindex="-1"
               aria-selected="false" aria-controls="tab-history" data-tab="history">السجل</button>
+      <button class="tab" role="tab" id="tab-btn-drift" tabindex="-1"
+              aria-selected="false" aria-controls="tab-drift" data-tab="drift">الانحراف</button>
       <button class="tab" role="tab" id="tab-btn-settings" tabindex="-1"
               aria-selected="false" aria-controls="tab-settings" data-tab="settings">المفاتيح</button>
     </div>
@@ -95,6 +97,24 @@
           <div class="muted">سيُحسب فعلياً أثناء التشغيل</div>
         </div>
 
+        <!-- يظهر فقط للبنشماركات التي تحتاج حَكَماً. كان يُختار تلقائياً:
+             أول مزوّد لديه مفتاح، فيحكم Claude على Claude — وهو التحيّز
+             الذي يحذّر منه backend/benchmarks/llm_judge.py نفسه -->
+        <div id="judge-wrap" class="field-group hidden">
+          <fieldset>
+            <legend>نموذج الحَكَم</legend>
+            <div class="model-row">
+              <select id="judge-provider" aria-label="مزوّد الحَكَم"></select>
+              <select id="judge-model" aria-label="نموذج الحَكَم"></select>
+            </div>
+            <div id="judge-bias-warning" class="inline-warning" role="alert" hidden></div>
+            <small class="muted">
+              اختر حَكَماً من عائلة مختلفة عن النماذج المُختبَرة — الحَكَم من نفس
+              العائلة يميل لصالحها.
+            </small>
+          </fieldset>
+        </div>
+
         <div class="run-options">
           <label class="checkbox">
             <input type="checkbox" id="use-cache" checked />
@@ -110,7 +130,11 @@
           </small>
         </div>
 
-        <button id="run-btn" class="btn-primary" type="button">▶ شغّل الاختبار</button>
+        <div class="run-actions">
+          <button id="run-btn" class="btn-primary" type="button">▶ شغّل الاختبار</button>
+          <!-- الخادم يدعم الإيقاف عبر is_disconnected؛ كان ينقص الزرّ فقط -->
+          <button id="stop-btn" class="btn-danger" type="button" hidden>⏹ إيقاف</button>
+        </div>
 
         <div id="progress-area" class="hidden">
           <div id="progress-bar" class="progress-bar" role="progressbar"
@@ -120,6 +144,8 @@
           </div>
           <div id="progress-text" class="muted small" role="status" aria-live="polite"></div>
 
+          <div id="sandbox-warning" class="run-alert alert-danger" role="alert" hidden></div>
+          <div id="budget-unreliable" class="run-alert alert-warn" role="alert" hidden></div>
           <div id="budget-warning" class="budget-warning" role="alert" hidden></div>
           <div id="run-errors" class="error-summary" role="alert" hidden></div>
 
@@ -169,6 +195,43 @@
         <button id="refresh-history" class="btn-secondary small" type="button">↻ تحديث</button>
       </div>
       <div id="history-list"></div>
+    </div>
+  </section>
+
+  <!-- ============== صفحة الانحراف عبر الزمن ============== -->
+  <section id="tab-drift" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-drift" tabindex="0">
+    <div class="panel">
+      <div class="panel-header">
+        <h2>الانحراف عبر الزمن</h2>
+      </div>
+      <p class="muted small">
+        المزوّدون يحدّثون النماذج خلف نفس اسم الإصدار أحياناً بلا إشعار. هذه الصفحة
+        تربط تشغيلات نفس (بنشمارك، نموذج) لتُظهر الاتجاه بدل أن يبقى كل تشغيل جزيرة
+        في السجل. تحتاج تشغيلين على الأقل لنفس النموذج.
+      </p>
+
+      <div class="drift-controls">
+        <div class="field-inline">
+          <label for="drift-benchmark">البنشمارك</label>
+          <select id="drift-benchmark" aria-label="اختر البنشمارك لتتبّع الانحراف"></select>
+        </div>
+        <label class="checkbox">
+          <input type="checkbox" id="drift-include-partial" />
+          <span>أدرج التشغيلات المتوقّفة (ميزانية/انقطاع) — عيّنتها ناقصة</span>
+        </label>
+      </div>
+
+      <div id="drift-scope-warning" class="run-alert alert-warn" role="alert" hidden></div>
+      <div id="drift-empty" class="muted" hidden></div>
+
+      <figure id="drift-chart-figure" class="chart-figure" hidden>
+        <canvas id="drift-chart" aria-hidden="true"></canvas>
+        <figcaption class="muted small">
+          الدقّة عبر الزمن لكل نموذج — نفس الأرقام في الجدول أدناه مع فاصل الثقة.
+        </figcaption>
+      </figure>
+
+      <div id="drift-table"></div>
     </div>
   </section>
 
