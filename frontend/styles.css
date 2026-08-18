@@ -544,16 +544,6 @@ input:focus, select:focus {
   flex-wrap: wrap;
 }
 
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  background: var(--border-soft);
-}
-.dot.correct { background: var(--success); }
-.dot.wrong { background: var(--danger); }
-.dot.error { background: var(--warning); }
-
 #results-chart {
   margin-top: 24px;
   max-height: 280px;
@@ -611,8 +601,6 @@ input:focus, select:focus {
 }
 
 /* dots قابلة للنقر */
-.dot-clickable { cursor: pointer; transition: transform 0.1s; }
-.dot-clickable:hover { transform: scale(1.4); outline: 1px solid var(--accent); }
 
 /* Toast */
 .toast {
@@ -703,21 +691,9 @@ input:focus, select:focus {
 }
 
 /* ============= HISTORY ============= */
-.history-row {
-  background: var(--bg-elev);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
-  padding: 14px 16px;
-  margin-bottom: 8px;
-  display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
-  gap: 16px;
-  align-items: center;
-  cursor: pointer;
-  transition: border 0.15s;
-}
-
-.history-row:hover { border-color: var(--primary); }
+/* ملاحظة: تنسيق ‎.history-row‎ نفسه يعيش في قسم «السجل» أدناه. كانت هنا نسخة
+   قديمة تُنسّقه كبطاقة (grid + خلفية + إطار) من عهد ما قبل فصل زرّ الفتح عن
+   زرّ الحذف؛ صارت البطاقة ‎.history-open‎ وبقيت النسخة القديمة ميتة. */
 
 .history-id {
   font-family: var(--font-mono);
@@ -912,13 +888,6 @@ footer a:hover { text-decoration: underline; }
   gap: 8px;
   margin-top: 12px;
   flex-wrap: wrap;
-}
-
-/* ============= CACHE BADGE في النتائج ============= */
-.dot.cache {
-  background: var(--accent);
-  opacity: 0.6;
-  border: 1px solid var(--accent-soft);
 }
 
 /* ============= HEAD-TO-HEAD MATRIX ============= */
@@ -1330,4 +1299,80 @@ body.modal-open { overflow: hidden; }
   }
 
   #summary-table table { font-size: 12px; }
+}
+
+/* ============= لافتات التشغيل: تحذيرات يجب أن تبقى مرئية ============= */
+/* toast يختفي خلال ثوانٍ — لا يصلح لتحذير «كودك سيُنفَّذ بلا عزل» */
+.run-alert {
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin: 12px 0;
+  font-size: 13px;
+  line-height: 1.7;
+  border: 1px solid;
+}
+.run-alert strong { display: block; margin-bottom: 4px; }
+
+.alert-danger {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: var(--danger);
+  color: var(--text);
+}
+.alert-warn {
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border-color: var(--warning);
+  color: var(--text);
+}
+
+.inline-warning {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.6;
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border: 1px solid var(--warning);
+}
+
+/* ============= صفّ أزرار التشغيل ============= */
+.run-actions {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.run-actions .btn-primary { flex: 1; }
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 18px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.btn-danger:disabled { opacity: 0.55; cursor: default; }
+
+/* ============= أهداف اللمس على الشاشات الصغيرة ============= */
+/* WCAG 2.2 §2.5.8 يطلب 24×24px كحدّ أدنى. النقاط كانت 16px وهي أزرار
+   حقيقية تفتح تفاصيل المسألة، وأزرار الأيقونات 30px. */
+@media (max-width: 720px) {
+  .dot {
+    width: 26px;
+    height: 26px;
+    font-size: 13px;
+  }
+  .dot-grid { gap: 5px; }
+  .icon-btn { width: 44px; height: 44px; font-size: 17px; }
+  .run-actions { flex-direction: column; }
+}
+
+/* أجهزة اللمس مهما كان عرضها (تابلت أفقي مثلاً) */
+@media (pointer: coarse) {
+  .dot { min-width: 24px; min-height: 24px; }
+  .icon-btn { min-width: 44px; min-height: 44px; }
 }

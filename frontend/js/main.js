@@ -3,8 +3,9 @@
 import { api, ApiError } from './api.js';
 import { h, hideBanner, initModal, replaceChildren, showBanner, showToast } from './dom.js';
 import {
-  addModelRow, clampProblems, loadKeys, loadOllamaModels,
-  renderBenchmarks, renderModels, saveKeys, updateCostEstimate,
+  addModelRow, clampProblems, collectJudge, initJudgePicker, loadKeys,
+  loadOllamaModels, renderBenchmarks, renderJudgePicker, renderModels,
+  saveKeys, updateCostEstimate,
 } from './setup.js';
 import {
   appendLiveResult, copySummaryAsMarkdown, loadHistory, refreshChartTheme,
@@ -80,17 +81,49 @@ async function loadSandboxStatus() {
 
 /* ============ التشغيل ============ */
 
-function collectJudge() {
-  const judgeProvider = ['anthropic', 'openai', 'gemini'].find(p => getKey(p));
-  if (!judgeProvider) return null;
-  const info = state.providers.find(p => p.id === judgeProvider);
-  if (!info?.models?.length) return null;
-  return {
-    provider: judgeProvider,
-    // آخر نموذج في القائمة هو الأصغر/الأرخص حسب ترتيبنا في backend/providers
-    model: info.models[info.models.length - 1],
-    api_key: getKey(judgeProvider),
-  };
+/** قارئ البثّ الجاري — إلغاؤه يصل للخادم عبر is_disconnected فيوقف الإنفاق. */
+let activeReader = null;
+/** هل أُوقف التشغيل بطلب المستخدم؟ إلغاء القارئ ينهي الحلقة بلا استثناء. */
+let userStopped = false;
+
+function setRunning(on) {
+  const runBtn = document.getElementById('run-btn');
+  const stopBtn = document.getElementById('stop-btn');
+  runBtn.disabled = on;
+  runBtn.textContent = on ? '⏳ جارٍ التشغيل...' : '▶ شغّل الاختبار';
+  stopBtn.hidden = !on;
+  stopBtn.disabled = false;
+}
+
+async function stopRun() {
+  if (!activeReader) return;
+  const stopBtn = document.getElementById('stop-btn');
+  stopBtn.disabled = true;
+  stopBtn.textContent = '⏹ جارٍ الإيقاف...';
+  userStopped = true;
+  try {
+    // إغلاق القارئ يقطع اتصال SSE، فيراه الخادم عبر is_disconnected
+    // ويُلغي الاستدعاءات المعلّقة بدل إنفاقها بلا فائدة
+    await activeReader.cancel();
+  } catch { /* البثّ منتهٍ أصلاً */ }
+  activeReader = null;
+  showToast('أُوقف التشغيل — لن تُنفَق استدعاءات جديدة', 'info');
+  stopBtn.textContent = '⏹ إيقاف';
+}
+
+/** لافتة تشغيل ثابتة (لا toast يختفي) — للتحذيرات التي يجب أن تبقى مرئية. */
+function showRunAlert(id, ...children) {
+  const box = document.getElementById(id);
+  replaceChildren(box, ...children);
+  box.hidden = false;
+}
+
+function hideRunAlerts() {
+  for (const id of ['sandbox-warning', 'budget-unreliable', 'budget-warning']) {
+    const box = document.getElementById(id);
+    box.hidden = true;
+    replaceChildren(box);
+  }
 }
 
 async function runBenchmark() {
@@ -109,13 +142,16 @@ async function runBenchmark() {
     return;
   }
 
+  // يُقرَّر من خاصية البنشمارك لا من اسمه المكتوب يدوياً
+  const bench = state.benchmarks.find(b => b.id === state.selectedBenchmark);
   let judge = null;
-  if (state.selectedBenchmark === 'llm_judge') {
-    judge = collectJudge();
-    if (!judge) {
-      showToast('بنشمارك LLM-as-judge يحتاج مفتاح Anthropic أو OpenAI أو Gemini ليعمل كحَكَم', 'error');
+  if (bench?.needs_judge) {
+    const picked = collectJudge();
+    if (picked.error) {
+      showToast(picked.error, 'error');
       return;
     }
+    judge = picked.judge;
   }
 
   const n = clampProblems();
@@ -139,18 +175,18 @@ async function runBenchmark() {
     enforce_safety: (localStorage.getItem('enforce_safety') ?? 'true') === 'true',
   };
 
-  const runBtn = document.getElementById('run-btn');
-  runBtn.disabled = true;
-  runBtn.textContent = '⏳ جارٍ التشغيل...';
+  setRunning(true);
   document.getElementById('progress-area').classList.remove('hidden');
   document.getElementById('run-summary').classList.add('hidden');
-  document.getElementById('budget-warning').hidden = true;
+  hideRunAlerts();
   resetLive(validModels);
   renderErrorSummary();
   setProgress(0, 'جارٍ البدء...');
 
+  userStopped = false;
   try {
     const reader = await api.startRun(body);
+    activeReader = reader;
     // العدد الحقيقي يصل مع حدث start بعد الفلترة؛ التقدير المحلي كان
     // يترك الشريط عالقاً دون 100% كلّما قلّت المسائل عن المطلوب
     let totalCalls = n * validModels.length;
@@ -174,18 +210,47 @@ async function runBenchmark() {
         warn.textContent =
           `⚠ تجاوز الميزانية: أُنفق $${data.spent_usd.toFixed(4)} من حدّ $${data.budget_usd.toFixed(2)}. توقّف التشغيل.`;
         warn.hidden = false;
+      } else if (event === 'budget_unreliable') {
+        // الحدّ لا يرى هذه النماذج: تكلفتها تُحسب صفراً فلن يوقف شيئاً
+        showRunAlert('budget-unreliable',
+          h('strong', {}, '⚠ حدّ الميزانية غير فعّال لهذه النماذج: '),
+          (data.models || []).join('، '),
+          h('div', { class: 'muted small' }, data.message),
+        );
+      } else if (event === 'sandbox_warning') {
+        showRunAlert('sandbox-warning',
+          h('strong', {}, '🔓 كود النماذج سيُنفَّذ بلا عزل حقيقي'),
+          h('div', {}, data.message),
+          h('div', { class: 'muted small' },
+            `الـ backend الحالي: ${data.backend}`
+            + (data.docker_available ? ' — Docker متاح، اضبط SANDBOX_BACKEND=docker.' : '')),
+        );
       } else if (event === 'done') {
         renderErrorSummary();
         await showSummary(state.currentRunId);
       } else if (event === 'error') {
+        // كان toast يختفي خلال ثوانٍ ويترك الشريط عالقاً والملخّص مخفياً،
+        // فتبدو الواجهة «شغّالة» بينما التشغيل انتهى بفشل
         showToast(data.error, 'error');
+        showRunAlert('run-errors',
+          h('strong', {}, '⚠ توقّف التشغيل: '),
+          data.error,
+        );
+        setProgress(100, '✗ توقّف بخطأ');
       }
     }
+    // إلغاء القارئ ينهي الحلقة طبيعياً بلا استثناء — نُعلن التوقّف هنا
+    if (userStopped) setProgress(100, '⏹ أُوقف بطلبك');
   } catch (e) {
-    showToast(e instanceof ApiError ? e.message : `خطأ: ${e.message}`, 'error');
+    // الإلغاء أثناء قراءة قيد التنفيذ قد يظهر استثناءً — ليس عطلاً
+    if (userStopped) {
+      setProgress(100, '⏹ أُوقف بطلبك');
+    } else {
+      showToast(e instanceof ApiError ? e.message : `خطأ: ${e.message}`, 'error');
+    }
   } finally {
-    runBtn.disabled = false;
-    runBtn.textContent = '▶ شغّل الاختبار';
+    activeReader = null;
+    setRunning(false);
   }
 }
 
@@ -211,8 +276,10 @@ async function init() {
   loadKeys();
   showSkeleton();
 
+  initJudgePicker();
   document.getElementById('add-model-btn').addEventListener('click', addModelRow);
   document.getElementById('run-btn').addEventListener('click', runBenchmark);
+  document.getElementById('stop-btn').addEventListener('click', stopRun);
   document.getElementById('save-keys-btn').addEventListener('click', saveKeys);
   document.getElementById('n-problems').addEventListener('input', updateCostEstimate);
   document.getElementById('refresh-history').addEventListener('click', loadHistory);
@@ -245,6 +312,7 @@ async function init() {
   await Promise.allSettled([loadOllamaModels(), loadSandboxStatus(), refreshCacheStats()]);
   if (!state.models.length) addModelRow();
   renderModels();
+  renderJudgePicker();
 }
 
 async function exportRun(fmt) {

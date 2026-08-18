@@ -37,6 +37,30 @@ jobs:
       - name: Run tests with coverage gate
         run: pytest tests/ -v --cov=backend --cov-report=term-missing --cov-fail-under=80
 
+  # 2,684 سطر واجهة (JS + CSS) كانت بلا فاحص ولا اختبار — وهو بالضبط سبب
+  # نجاة الدوال والـ CSS الميتة بينما ruff يفحص backend/ بالكامل
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # مُشغّل اختبارات Node المدمج — بلا اعتماديات ولا خطوة بناء
+      - name: Frontend unit tests
+        run: node --test tests/*.test.js
+
+      - name: Lint JS (eslint)
+        run: npx --yes eslint@9 --config eslint.config.mjs js tests
+
+      - name: Lint CSS (stylelint)
+        run: npx --yes stylelint@16 --config .stylelintrc.json styles.css vendor/fonts.css
+
   security:
     runs-on: ubuntu-latest
     steps:

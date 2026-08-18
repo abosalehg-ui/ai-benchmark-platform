@@ -95,6 +95,24 @@
           <div class="muted">سيُحسب فعلياً أثناء التشغيل</div>
         </div>
 
+        <!-- يظهر فقط للبنشماركات التي تحتاج حَكَماً. كان يُختار تلقائياً:
+             أول مزوّد لديه مفتاح، فيحكم Claude على Claude — وهو التحيّز
+             الذي يحذّر منه backend/benchmarks/llm_judge.py نفسه -->
+        <div id="judge-wrap" class="field-group hidden">
+          <fieldset>
+            <legend>نموذج الحَكَم</legend>
+            <div class="model-row">
+              <select id="judge-provider" aria-label="مزوّد الحَكَم"></select>
+              <select id="judge-model" aria-label="نموذج الحَكَم"></select>
+            </div>
+            <div id="judge-bias-warning" class="inline-warning" role="alert" hidden></div>
+            <small class="muted">
+              اختر حَكَماً من عائلة مختلفة عن النماذج المُختبَرة — الحَكَم من نفس
+              العائلة يميل لصالحها.
+            </small>
+          </fieldset>
+        </div>
+
         <div class="run-options">
           <label class="checkbox">
             <input type="checkbox" id="use-cache" checked />
@@ -110,7 +128,11 @@
           </small>
         </div>
 
-        <button id="run-btn" class="btn-primary" type="button">▶ شغّل الاختبار</button>
+        <div class="run-actions">
+          <button id="run-btn" class="btn-primary" type="button">▶ شغّل الاختبار</button>
+          <!-- الخادم يدعم الإيقاف عبر is_disconnected؛ كان ينقص الزرّ فقط -->
+          <button id="stop-btn" class="btn-danger" type="button" hidden>⏹ إيقاف</button>
+        </div>
 
         <div id="progress-area" class="hidden">
           <div id="progress-bar" class="progress-bar" role="progressbar"
@@ -120,6 +142,8 @@
           </div>
           <div id="progress-text" class="muted small" role="status" aria-live="polite"></div>
 
+          <div id="sandbox-warning" class="run-alert alert-danger" role="alert" hidden></div>
+          <div id="budget-unreliable" class="run-alert alert-warn" role="alert" hidden></div>
           <div id="budget-warning" class="budget-warning" role="alert" hidden></div>
           <div id="run-errors" class="error-summary" role="alert" hidden></div>
 

@@ -1,7 +1,7 @@
 /* عرض النتائج: البثّ اللحظي، الملخّص، المقارنة الزوجية، التفاصيل، السجل. */
 
 import { api } from './api.js';
-import { closeModal, escapeHtml, h, modalBody, openModal, replaceChildren, showToast } from './dom.js';
+import { h, modalBody, openModal, replaceChildren, showToast } from './dom.js';
 import { liveKey, state } from './state.js';
 
 /* رموز غير لونية لكل حالة — شبكة النتائج كانت تُميّز بالّلون وحده،
@@ -30,8 +30,37 @@ export function resetLive(models) {
   // والربط لكل النقاط عند كل حدث، أي O(n²) عمليات DOM
   if (!container._delegated) {
     container.addEventListener('click', onDotClick);
+    container.addEventListener('keydown', onDotKeydown);
     container._delegated = true;
   }
+}
+
+/**
+ * تنقّل roving tabindex داخل شبكة النقاط.
+ *
+ * تشغيل 200 مسألة × 5 نماذج = 1000 زرّ في تسلسل Tab واحد؛ الوصول لجدول
+ * الملخّص كان يحتاج ألف ضغطة. الآن نقطة واحدة لكل شبكة قابلة للوصول بـTab،
+ * والتنقّل داخلها بالأسهم — نفس النمط المطبَّق على شريط التبويبات.
+ */
+function onDotKeydown(e) {
+  const dot = e.target.closest?.('.dot');
+  if (!dot) return;
+  const grid = dot.parentElement;
+  const dots = [...grid.querySelectorAll('.dot')];
+  const i = dots.indexOf(dot);
+  // في RTL السهم الأيسر يتقدّم والأيمن يرجع
+  const delta = {
+    ArrowLeft: 1, ArrowRight: -1,
+    ArrowDown: 1, ArrowUp: -1,
+    Home: -i, End: dots.length - 1 - i,
+  }[e.key];
+  if (delta === undefined) return;
+  e.preventDefault();
+  const next = dots[Math.min(Math.max(i + delta, 0), dots.length - 1)];
+  if (!next || next === dot) return;
+  dot.tabIndex = -1;
+  next.tabIndex = 0;
+  next.focus();
 }
 
 function buildLiveCard(m) {
@@ -72,15 +101,18 @@ export function appendLiveResult(payload) {
 
   const meta = DOT_META[kind];
   const latency = (payload.latency_ms || 0).toFixed(0);
+  const grid = card.querySelector('[data-role="dots"]');
   const dot = h('button', {
     type: 'button',
     class: `dot dot-${kind}`,
     role: 'listitem',
+    // النقطة الأولى وحدها في تسلسل Tab؛ البقيّة بالأسهم (roving tabindex)
+    tabindex: grid.firstElementChild ? '-1' : '0',
     title: `${payload.problem_id} — ${meta.label} (${latency}ms)`,
     'aria-label': `${payload.problem_id}: ${meta.label}، ${latency} ملّي ثانية. اضغط للتفاصيل`,
     dataset: { pid: payload.problem_id || '', provider: m.provider, model: m.model },
   }, meta.glyph);
-  card.querySelector('[data-role="dots"]').appendChild(dot);
+  grid.appendChild(dot);
 
   const acc = ((m.n_correct / (m.n_done || 1)) * 100).toFixed(1);
   const bits = [`${acc}%`, `$${(m.total_cost || 0).toFixed(4)}`];
@@ -119,9 +151,12 @@ export function renderErrorSummary() {
 
 export async function showProblemDetail(problemId, provider, model) {
   let detail = findDetail(problemId, provider, model);
+  // كان يُعاد تحميل الـ run كاملاً (كل التفاصيل) لعرض صفّ واحد.
+  // الآن نطلب صفوف هذا النموذج وحده من الـ endpoint المقسّم.
   if (!detail && state.currentRunId) {
     try {
-      state.currentRunData = await api.run(state.currentRunId);
+      const page = await api.runDetails(state.currentRunId, { provider, model, limit: 500 });
+      mergeDetails(page.details);
       detail = findDetail(problemId, provider, model);
     } catch (e) {
       showToast(e.message, 'error');
@@ -153,10 +188,55 @@ export async function showProblemDetail(problemId, provider, model) {
 }
 
 function findDetail(problemId, provider, model) {
-  const details = state.currentRunData?.details || [];
-  return details.find(d =>
+  return state.loadedDetails.find(d =>
     d.problem_id === problemId && d.provider === provider && d.model === model
   );
+}
+
+/** مفتاح هوية صفّ نتيجة: نفس المسألة على نفس النموذج. */
+export const detailKey = d => `${d.problem_id}|${d.provider}|${d.model}`;
+
+/** يدمج صفوفاً جديدة في قائمة موجودة بلا تكرار. دالة نقيّة قابلة للاختبار. */
+export function mergeDetailRows(existing, incoming) {
+  const seen = new Set(existing.map(detailKey));
+  const out = existing.slice();
+  for (const row of incoming) {
+    if (!seen.has(detailKey(row))) {
+      out.push(row);
+      seen.add(detailKey(row));
+    }
+  }
+  return out;
+}
+
+function mergeDetails(rows) {
+  state.loadedDetails = mergeDetailRows(state.loadedDetails, rows);
+}
+
+/** يجمع صفوف النتائج حسب المسألة — أساس عرض المقارنة جنباً إلى جنب. */
+export function groupByProblem(rows) {
+  const byProblem = {};
+  for (const d of rows) {
+    (byProblem[d.problem_id] ||= []).push(d);
+  }
+  return byProblem;
+}
+
+/** يحمّل كل تفاصيل الـ run على صفحات — للعرض الكامل والمقارنة جنباً إلى جنب. */
+async function loadAllDetails(runId) {
+  const PAGE = 500;
+  let offset = 0;
+  let total = Infinity;
+  const rows = [];
+  while (offset < total) {
+    const page = await api.runDetails(runId, { limit: PAGE, offset });
+    total = page.total;
+    rows.push(...page.details);
+    if (!page.details.length) break;
+    offset += page.details.length;
+  }
+  state.loadedDetails = rows;
+  return rows;
 }
 
 /* ============ الملخّص ============ */
@@ -181,6 +261,7 @@ export async function showSummary(runId) {
   }
   state.currentRunData = data;
   state.currentRunId = runId;
+  state.loadedDetails = [];  // تفاصيل run سابق لا تخصّ هذا
   document.getElementById('run-summary').classList.remove('hidden');
 
   if (data.models && data.models.length >= 2) renderH2H(runId);
@@ -370,15 +451,14 @@ export async function renderH2H(runId) {
 
 export async function showAllDetails() {
   if (!state.currentRunId) return;
-  let data;
+  let rows;
   try {
-    data = await api.run(state.currentRunId);
+    rows = await loadAllDetails(state.currentRunId);
   } catch (e) {
     showToast(e.message, 'error');
     return;
   }
-  state.currentRunData = data;
-  const items = data.details.map(d => {
+  const items = rows.map(d => {
     const status = d.error ? 'error' : (d.correct ? 'success' : 'error');
     const statusText = d.error ? 'خطأ تشغيل' : (d.correct ? 'صحيح' : 'خطأ');
     return h('div', { class: 'detail-result' },
@@ -398,16 +478,23 @@ export async function showAllDetails() {
   openModal(`تفاصيل Run ${state.currentRunId}`);
 }
 
-export function showDiffView() {
-  const data = state.currentRunData;
-  if (!data || !data.details) {
+export async function showDiffView() {
+  if (!state.currentRunId) {
     showToast('لا توجد بيانات لعرضها', 'error');
     return;
   }
-  const byProblem = {};
-  for (const d of data.details) {
-    (byProblem[d.problem_id] ||= []).push(d);
+  let rows;
+  try {
+    rows = await loadAllDetails(state.currentRunId);
+  } catch (e) {
+    showToast(e.message, 'error');
+    return;
   }
+  if (!rows.length) {
+    showToast('لا توجد بيانات لعرضها', 'error');
+    return;
+  }
+  const byProblem = groupByProblem(rows);
 
   const sections = Object.entries(byProblem).map(([pid, results]) => {
     const allSame = new Set(results.map(r => r.correct)).size === 1;
@@ -436,7 +523,7 @@ export function showDiffView() {
     h('p', { class: 'muted small' }, 'كل صف يعرض نفس السؤال على كل النماذج.'),
     sections,
   );
-  openModal(`مقارنة جنباً إلى جنب — Run ${data.id}`);
+  openModal(`مقارنة جنباً إلى جنب — Run ${state.currentRunId}`);
 }
 
 /* ============ السجل ============ */
@@ -506,5 +593,3 @@ export async function loadHistory() {
   });
   replaceChildren(container, rows);
 }
-
-export { escapeHtml, closeModal };

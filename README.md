@@ -246,9 +246,18 @@ SANDBOX_BACKEND=docker uvicorn backend.main:app --port 8000
 
 | Backend | الأمان | المتطلبات | للاستخدام |
 |---------|:---:|---|---|
-| `subprocess` *(افتراضي)* | ⚠️ متوسط (blacklist) | لا شيء | محلي على جهازك |
+| `auto` *(افتراضي)* | حسب المتاح | يفضّل Docker، يقع على subprocess | الافتراضي المعقول |
 | `docker` | 🛡️ عالٍ (عزل كامل) | Docker daemon شغّال | النشر / الإنتاج |
-| `auto` | متغيّر | يحاول Docker، يقع على subprocess | المرونة |
+| `subprocess` | 🔓 **بلا عزل** | لا شيء | آخر خيار فقط |
+
+> ⚠️ **مسار `subprocess` ليس sandbox.** حمايته الوحيدة قائمة سوداء من أنماط
+> regex، وهي **لا تحظر `open()`** فقراءة `~/.ssh` أو `~/.aws/credentials` تمرّ
+> منها، ولا تمنع `importlib.import_module('socket')` ولا وحدات شبكة غير مذكورة
+> مثل `ftplib`. حدود `resource.setrlimit` تحمي من استنزاف الموارد لا من قراءة
+> الملفات. الكود المُنفَّذ يأتي من نموذج خارجي — إن لم يكن لديك Docker، شغّل
+> `HumanEval` فقط على جهاز تقبل أن يقرأ ملفاته كودٌ لا تثق به.
+>
+> المنصّة تعرض تحذيراً في الواجهة قبل بدء أي تشغيل يُنفّذ كوداً بلا عزل.
 
 **التحكّم عبر env:**
 
@@ -392,7 +401,9 @@ sequenceDiagram
 | `POST /api/estimate` | تقدير تكلفة التشغيل قبل الانطلاق |
 | `POST /api/run` | تشغيل بنشمارك (SSE stream) |
 | `GET /api/runs` | تاريخ كل الـ runs |
-| `GET /api/runs/{id}` | تفاصيل run + Wilson CI لكل نموذج |
+| `GET /api/config` | حدود الخادم (max_problems / max_targets / auth_required) |
+| `GET /api/runs/{id}` | ملخّص run + Wilson CI لكل نموذج (بلا `details` — أضِف `?include_details=true` لسلوك التوافق) |
+| `GET /api/runs/{id}/details?limit=&offset=&provider=&model=` | نتائج الـ run مقسّمة على صفحات |
 | `GET /api/runs/{id}/h2h` | مصفوفة Head-to-Head |
 | `GET /api/runs/{id}/export?format=json\|csv` | تصدير نتائج |
 | `DELETE /api/runs/{id}` | حذف run |
@@ -407,7 +418,10 @@ sequenceDiagram
 |---------|-----------|--------|
 | `ALLOWED_ORIGINS` | `http://localhost:8000,http://127.0.0.1:8000` | CORS origins المسموحة (مفصولة بفاصلة) |
 | `RUN_CONCURRENCY` | `5` | عدد الاستدعاءات المتوازية لكل نموذج (1–32) |
-| `SANDBOX_BACKEND` | `subprocess` | `subprocess` / `docker` / `auto` |
+| `RUN_TARGET_CONCURRENCY` | `0` *(= كل النماذج بالتوازي)* | كم نموذجاً يُختبَر في وقت واحد. اضبطه `1` لتشغيل تسلسلي إن ضربت حدود المعدّل عند مزوّد واحد بعدّة نماذج |
+| `HTTP_MAX_CONNECTIONS` | `64` | حدّ اتصالات العميل المشترك |
+| `HTTP_MAX_KEEPALIVE` | `32` | اتصالات keep-alive المحفوظة (تجنّب إعادة مصافحة TLS) |
+| `SANDBOX_BACKEND` | `auto` | `auto` / `docker` / `subprocess` — انظر تحذير الـ sandbox أعلاه |
 | `SANDBOX_DOCKER_IMAGE` | `python:3.11-slim` | صورة Docker للـ sandbox |
 | `SANDBOX_DOCKER_MEMORY` | `256m` | حدّ الذاكرة |
 | `SANDBOX_DOCKER_CPUS` | `0.5` | حدّ المعالج |
