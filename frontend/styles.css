@@ -1376,3 +1376,66 @@ body.modal-open { overflow: hidden; }
   .dot { min-width: 24px; min-height: 24px; }
   .icon-btn { min-width: 44px; min-height: 44px; }
 }
+
+/* ============= تتبّع الانحراف عبر الزمن ============= */
+.drift-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+  margin: 16px 0 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+#drift-benchmark {
+  min-width: 220px;
+}
+
+#drift-table table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 13px;
+}
+
+#drift-table th, #drift-table td {
+  padding: 10px;
+  text-align: start;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+#drift-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* اتجاه التغيّر: اللون مصحوب برمز (▲ ▼ =) فهو مقروء بلا تمييز لوني */
+.drift-change { font-weight: 700; white-space: nowrap; }
+.drift-up    { color: var(--success); }
+.drift-down  { color: var(--danger); }
+.drift-noise { color: var(--text-muted); }
+.drift-flat  { color: var(--text-muted); }
+.drift-none  { color: var(--text-muted); }
+
+#drift-chart { max-height: 320px; }
+
+/* نصّ للقارئ الصوتي فقط — يحمل وصف التغيّر كاملاً بجانب الرقم المختصر */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 720px) {
+  .drift-controls { flex-direction: column; align-items: stretch; gap: 12px; }
+  #drift-benchmark { width: 100%; }
+  #drift-chart { max-height: 240px; }
+}

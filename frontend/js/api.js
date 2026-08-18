@@ -85,6 +85,11 @@ export const api = {
     return getJSON(`/api/runs/${encodeURIComponent(id)}/details?${q}`);
   },
   h2h: id => getJSON(`/api/runs/${encodeURIComponent(id)}/h2h`),
+  /** سلاسل الانحراف عبر الزمن لبنشمارك واحد. */
+  drift: (benchmark, { includePartial = false } = {}) => {
+    const q = new URLSearchParams({ benchmark, include_partial: String(includePartial) });
+    return getJSON(`/api/drift?${q}`);
+  },
   deleteRun: id => request(`/api/runs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   cacheStats: () => getJSON('/api/cache/stats'),
   clearCache: async () => (await request('/api/cache', { method: 'DELETE' })).json(),

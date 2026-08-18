@@ -11,6 +11,7 @@ import {
   appendLiveResult, copySummaryAsMarkdown, loadHistory, refreshChartTheme,
   renderErrorSummary, resetLive, showAllDetails, showDiffView, showSummary,
 } from './results.js';
+import { initDrift, openDriftTab, refreshDriftChartTheme } from './drift.js';
 import { readSSE } from './sse.js';
 import { getKey, state } from './state.js';
 
@@ -30,6 +31,7 @@ function initTabs() {
       c.classList.toggle('active', c.id === 'tab-' + tab.dataset.tab);
     });
     if (tab.dataset.tab === 'history') loadHistory();
+    if (tab.dataset.tab === 'drift') openDriftTab();
   }
 
   tabs.forEach((tab, i) => {
@@ -58,7 +60,9 @@ function initTheme() {
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('theme', next);
     btn.setAttribute('aria-pressed', String(next === 'light'));
-    refreshChartTheme(); // المخطّط يقرأ الألوان من CSS عند البناء فقط
+    // المخطّطات تقرأ الألوان من CSS عند البناء فقط
+    refreshChartTheme();
+    refreshDriftChartTheme();
   });
 }
 
@@ -277,6 +281,7 @@ async function init() {
   showSkeleton();
 
   initJudgePicker();
+  initDrift();
   document.getElementById('add-model-btn').addEventListener('click', addModelRow);
   document.getElementById('run-btn').addEventListener('click', runBenchmark);
   document.getElementById('stop-btn').addEventListener('click', stopRun);

@@ -16,6 +16,8 @@ export const state = {
   loadedDetails: [],          // صفوف التفاصيل المحمّلة على صفحات
   liveData: {},          // { "provider:model": {...} }
   chart: null,
+  driftData: null,          // آخر استجابة /api/drift
+  driftChart: null,
   summaryRows: [],
   summarySort: { key: 'accuracy', dir: 'desc' },
 };

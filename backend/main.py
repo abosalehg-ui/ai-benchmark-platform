@@ -24,6 +24,7 @@ from backend.benchmarks import (
     list_benchmarks,
     make_benchmark,
 )
+from backend.drift import drift_series
 from backend.logging_config import get_logger, setup_logging
 from backend.netguard import UnsafeURLError, validate_base_url
 from backend.pricing import PRICING, PRICING_LAST_VERIFIED, get_price
@@ -352,6 +353,25 @@ def get_run_details(
         raise HTTPException(404, "Run غير موجود")
     return db.get_run_details(
         run_id, limit=limit, offset=offset, provider=provider, model=model
+    )
+
+
+@app.get("/api/drift", dependencies=protected)
+def get_drift(
+    benchmark: str,
+    include_partial: bool = False,
+    max_runs: int = Query(default=50, ge=2, le=200),
+):
+    """تتبّع انحراف النماذج عبر الزمن على بنشمارك واحد.
+
+    يربط تشغيلات نفس (بنشمارك، نموذج) ليُظهر الاتجاه بدل أن يبقى كل تشغيل
+    جزيرة في السجل. النقاط تحمل بصمة نطاقها حتى لا يُقارَن تشغيل 10 مسائل
+    بتشغيل 200 ويُسمّى الفرق انحرافاً.
+    """
+    if benchmark not in BENCHMARKS:
+        raise HTTPException(404, f"بنشمارك غير معروف: {benchmark}")
+    return drift_series(
+        benchmark, include_partial=include_partial, max_runs=max_runs
     )
 
 
