@@ -37,6 +37,31 @@ jobs:
       - name: Run tests with coverage gate
         run: pytest tests/ -v --cov=backend --cov-report=term-missing --cov-fail-under=80
 
+  # مسار Docker هو الـ backend الموصى به للنشر وصار الافتراضي عبر "auto"،
+  # لكن اختباره الحقيقي كان خلف RUN_DOCKER_TESTS=1 فلم يعمل في CI إطلاقاً —
+  # فمرّ عطل صلاحيات (المجلّد 0700 بينما الحاوية تعمل بمستخدم nobody) بصمت.
+  # runners الـ GitHub فيها Docker، فلا عذر لتخطّيه.
+  sandbox-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Sandbox tests against a real Docker daemon
+        env:
+          RUN_DOCKER_TESTS: "1"
+          SANDBOX_BACKEND: docker
+        run: pytest tests/test_sandbox.py -v
+
   # 2,684 سطر واجهة (JS + CSS) كانت بلا فاحص ولا اختبار — وهو بالضبط سبب
   # نجاة الدوال والـ CSS الميتة بينما ruff يفحص backend/ بالكامل
   frontend:

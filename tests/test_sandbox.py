@@ -14,6 +14,19 @@ from backend.sandbox import (
 )
 
 
+@pytest.fixture(autouse=True)
+def pin_subprocess_backend(monkeypatch):
+    """يثبّت backend الـ subprocess لكل اختبار في هذا الملف.
+
+    أغلب ما هنا يختبر **دلالات مسار subprocess** تحديداً: القائمة السوداء،
+    حدود ``resource``، والاستدعاء من خيوط. بلا تثبيت صريح كانت هذه
+    الاختبارات ترث الافتراضي المحيط (``auto``)، فتنتقل إلى Docker على أي
+    جهاز فيه daemon — وتقيس شيئاً آخر تماماً. الاختبارات التي تعني
+    الافتراضي أو Docker تتجاوز هذا التثبيت بـ``monkeypatch`` في جسمها.
+    """
+    monkeypatch.setenv("SANDBOX_BACKEND", "subprocess")
+
+
 def test_runs_simple_code():
     result = run_python_code("def add(a, b): return a + b", "assert add(2, 3) == 5", timeout=5)
     assert result.passed, f"{result.error} / {result.stderr}"
@@ -182,6 +195,41 @@ def test_docker_runner_builds_a_hardened_command(monkeypatch):
     assert cmd[-2:] == ["python", "solution.py"]
     # مهلة الجدار أوسع من مهلة الكود للسماح بإقلاع الحاوية
     assert captured["kwargs"]["timeout"] == 12
+
+
+def test_docker_runner_makes_the_mount_readable_by_nobody(monkeypatch):
+    """تحصين ``--user=65534`` كان يكسر الـ sandbox بصمت.
+
+    ``TemporaryDirectory`` يُنشئ المجلّد بصلاحية 0700 لمالكه، والحاوية تعمل
+    بمستخدم nobody. بلا صلاحية العبور على المجلّد يفشل كل تشغيل بـ
+    «can't open file '/sandbox/solution.py': Permission denied» — وهو ما ظهر
+    فور جعل الافتراضي ``auto`` على أجهزة فيها Docker.
+    """
+    import stat
+
+    seen = {}
+
+    class _Completed:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def _fake_run(cmd, **kwargs):
+        # نلتقط الصلاحيات وقت التشغيل: المجلّد يُحذف بعد الخروج من الـ context
+        mount = cmd[cmd.index("-v") + 1].split(":")[0]
+        seen["dir_mode"] = stat.S_IMODE(os.stat(mount).st_mode)
+        seen["file_mode"] = stat.S_IMODE(os.stat(os.path.join(mount, "solution.py")).st_mode)
+        return _Completed()
+
+    monkeypatch.setattr(docker_runner.subprocess, "run", _fake_run)
+    docker_runner.run("print(1)", "", timeout=5)
+
+    # العبور (x) والقراءة (r) للجميع: بدونهما لا يستطيع nobody الوصول للملف
+    assert seen["dir_mode"] & 0o055 == 0o055, oct(seen["dir_mode"])
+    assert seen["file_mode"] & 0o044 == 0o044, oct(seen["file_mode"])
+    # ولا نمنح صلاحية الكتابة لغير المالك
+    assert seen["dir_mode"] & 0o022 == 0
+    assert seen["file_mode"] & 0o022 == 0
 
 
 def test_docker_runner_kills_container_on_timeout(monkeypatch):
