@@ -74,13 +74,47 @@ def test_saudi_legal_dataset_quality():
 
 def test_saudi_dialects_dataset_quality():
     problems = make_benchmark("saudi_dialects").load()
-    assert len(problems) >= 20
+    assert len(problems) >= 60
     dialects = {p.metadata.get("dialect") for p in problems}
-    assert {"نجدية", "حجازية"} <= dialects
+    assert {"نجدية", "حجازية", "جنوبية", "شرقية"} <= dialects
     for p in problems:
         assert len(p.metadata["choices"]) == 4
+        assert len(set(p.metadata["choices"])) == 4, f"{p.id}: خيارات مكرّرة"
         assert p.reference in "أبجد"
         assert p.metadata.get("explanation")
+
+    ids = [p.id for p in problems]
+    assert len(ids) == len(set(ids)), "توجد IDs مكررة"
+    questions = [p.prompt for p in problems]
+    assert len(questions) == len(set(questions)), "توجد أسئلة مكررة"
+
+
+def test_saudi_dialects_are_balanced_across_regions():
+    """كانت النجدية 16 والجنوبية والشرقية سؤالاً واحداً لكل منهما.
+
+    الواجهة والـ README يعرضان أربع لهجات مغطّاة، فالاختلال يجعل «دقّة النموذج
+    في اللهجات السعودية» قياساً للنجدية عملياً. هذا الاختبار يمنع عودة الميل.
+    """
+    problems = make_benchmark("saudi_dialects").load()
+    counts = {}
+    for p in problems:
+        d = p.metadata["dialect"]
+        counts[d] = counts.get(d, 0) + 1
+
+    assert set(counts) == {"نجدية", "حجازية", "جنوبية", "شرقية"}, counts
+    assert min(counts.values()) >= 15, f"لهجة ناقصة التغطية: {counts}"
+    # لا تتجاوز أكبر لهجة أصغرها بأكثر من الثلث
+    assert max(counts.values()) <= min(counts.values()) * 1.34, counts
+
+
+def test_every_dialect_has_more_than_one_difficulty():
+    """لهجة كل أسئلتها (صعب) تقيس شيئاً مختلفاً عن لهجة كل أسئلتها (سهل)."""
+    problems = make_benchmark("saudi_dialects").load()
+    by_dialect = {}
+    for p in problems:
+        by_dialect.setdefault(p.metadata["dialect"], set()).add(p.metadata["difficulty"])
+    for dialect, levels in by_dialect.items():
+        assert len(levels) >= 2, f"{dialect}: مستوى صعوبة واحد فقط ({levels})"
 
 
 def test_tool_use_dataset_quality():
