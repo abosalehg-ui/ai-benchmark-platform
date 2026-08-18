@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import json
 
-from backend.benchmarks.base import BaseBenchmark, Problem, Score
+from backend.benchmarks.base import BaseBenchmark, EvalContext, Problem, Score
 from backend.benchmarks.parsing import extract_json_object
-from backend.providers.base import BaseProvider, ModelResponse
+from backend.providers.base import ModelResponse
 
 
 class ToolUseBenchmark(BaseBenchmark):
@@ -74,7 +74,7 @@ class ToolUseBenchmark(BaseBenchmark):
         self,
         problem: Problem,
         response: ModelResponse,
-        judge_provider: BaseProvider | None = None,
+        ctx: EvalContext,
     ) -> Score:
         parsed = self.extract_json(response.text)
         expected = problem.reference

@@ -1,9 +1,9 @@
 """بنشمارك GSM8K — مسائل رياضية كلامية."""
 from __future__ import annotations
 
-from backend.benchmarks.base import BaseBenchmark, Problem, Score
+from backend.benchmarks.base import BaseBenchmark, EvalContext, Problem, Score
 from backend.benchmarks.parsing import extract_number
-from backend.providers.base import BaseProvider, ModelResponse
+from backend.providers.base import ModelResponse
 
 
 class GSM8KBenchmark(BaseBenchmark):
@@ -38,7 +38,7 @@ class GSM8KBenchmark(BaseBenchmark):
         self,
         problem: Problem,
         response: ModelResponse,
-        judge_provider: BaseProvider | None = None,
+        ctx: EvalContext,
     ) -> Score:
         predicted = extract_number(response.text)
         try:

@@ -103,3 +103,116 @@ def test_docker_e2e_when_available():
     assert r.backend == "docker"
     assert r.passed, f"{r.error} / {r.stderr}"
     assert "hello" in r.stdout
+
+
+# ============ الافتراضي الآمن + وصول علَم الأمان ============
+
+def test_default_backend_prefers_isolation(monkeypatch):
+    """الافتراضي صار auto: من لديه Docker يحصل على عزل حقيقي بلا ضبط شيء.
+
+    القائمة السوداء لا يمكن أن تنجح مبدئياً (انظر الاختبار التالي)، فالافتراضي
+    السابق ``subprocess`` كان يعني تنفيذ كود النماذج على الجهاز بلا عزل.
+    """
+    monkeypatch.delenv("SANDBOX_BACKEND", raising=False)
+    expected = "docker" if docker_runner.is_available() else "subprocess"
+    assert current_backend_name() == expected
+
+
+def test_status_note_is_honest_about_blacklist_limits(monkeypatch):
+    monkeypatch.setenv("SANDBOX_BACKEND", "subprocess")
+    note = backend_status()["note"]
+    assert "بلا عزل حقيقي" in note
+    assert "قراءة الملفات" in note
+
+
+@pytest.mark.parametrize("payload", [
+    "print(open('/etc/hostname').read())",           # القائمة السوداء لا تحظر open
+    "import importlib\nm = importlib.import_module('so' + 'cket')",
+    "import ftplib",                                  # وحدة شبكة غير مذكورة
+    "from pathlib import Path\nPath('x').write_text('y')",
+])
+def test_blacklist_is_known_to_be_bypassable(payload):
+    """توثيق تنفيذي لحدود الفاحص: هذه الأنماط **تمرّ**.
+
+    الاختبار يثبّت الواقع حتى لا يظنّ أحد أن القائمة السوداء حماية. الحماية
+    الحقيقية هي backend الـ docker — ولهذا صار الافتراضي ``auto``.
+    """
+    from backend.sandbox import is_code_safe
+
+    safe, _ = is_code_safe(payload)
+    assert safe is True
+
+
+def test_enforce_safety_flag_reaches_the_checker():
+    """الخانة في الواجهة كانت بلا أثر: العلَم يصل الآن حتى is_code_safe."""
+    blocked = run_python_code("import os\nos.system('echo hi')", "", timeout=5,
+                              enforce_safety=True)
+    assert blocked.blocked_reason is not None
+
+    allowed = run_python_code("import os\nprint(os.system)", "", timeout=5,
+                              enforce_safety=False)
+    assert allowed.blocked_reason is None
+
+
+# ============ docker_runner: بناء الأمر ومسارات الفشل ============
+
+def test_docker_runner_builds_a_hardened_command(monkeypatch):
+    """نفحص الأمر المبنيّ فعلياً بلا daemon — كان المسار الآمن أقلّ المسارات تغطيةً."""
+    captured = {}
+
+    class _Completed:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def _fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        return _Completed()
+
+    monkeypatch.setattr(docker_runner.subprocess, "run", _fake_run)
+    result = docker_runner.run("print(1)", "assert True", timeout=7)
+
+    assert result.passed and result.backend == "docker"
+    cmd = captured["cmd"]
+    assert cmd[:2] == ["docker", "run"]
+    for flag in ("--rm", "--network=none", "--read-only", "--cap-drop=ALL",
+                 "--security-opt=no-new-privileges", "--user=65534:65534"):
+        assert flag in cmd
+    assert cmd[-2:] == ["python", "solution.py"]
+    # مهلة الجدار أوسع من مهلة الكود للسماح بإقلاع الحاوية
+    assert captured["kwargs"]["timeout"] == 12
+
+
+def test_docker_runner_kills_container_on_timeout(monkeypatch):
+    import subprocess as sp
+
+    calls = []
+
+    def _fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:2] == ["docker", "run"]:
+            raise sp.TimeoutExpired(cmd, kwargs.get("timeout", 0))
+
+        class _Ok:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+        return _Ok()
+
+    monkeypatch.setattr(docker_runner.subprocess, "run", _fake_run)
+    result = docker_runner.run("while True: pass", "", timeout=3)
+
+    assert result.timed_out and not result.passed
+    # الحاوية تُقتل صراحةً بدل تركها تعمل بعد انتهاء المهلة
+    assert any(c[:2] == ["docker", "kill"] for c in calls)
+
+
+def test_docker_runner_reports_missing_docker(monkeypatch):
+    def _fake_run(cmd, **kwargs):
+        raise FileNotFoundError("docker")
+
+    monkeypatch.setattr(docker_runner.subprocess, "run", _fake_run)
+    result = docker_runner.run("print(1)", "", timeout=5)
+    assert not result.passed
+    assert "Docker غير مثبّت" in result.error

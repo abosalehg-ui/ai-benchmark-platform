@@ -255,3 +255,106 @@ def test_format_http_error_redacts_and_hints():
     assert "429" in msg
     assert "rate limit" in msg
     assert "ABCDEFGH" not in msg
+
+
+# ============ أسرار المفاتيح خارج العناوين ============
+
+def test_gemini_sends_the_key_in_a_header_not_the_url(monkeypatch):
+    """المفتاح في query string يتسرّب إلى سجلّات أي proxy وإلى نصوص الاستثناءات."""
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        seen["header"] = request.headers.get("x-goog-api-key")
+        return httpx.Response(200, json=RESPONSES["gemini"])
+
+    _patch_transport(monkeypatch, handler)
+    p = make_provider("gemini", api_key="AIzaSUPERSECRETKEY0123456789")
+    resp = _run(p.complete("سؤال", model=p.available_models[0]))
+
+    assert resp.error is None
+    assert "SUPERSECRET" not in seen["url"], "المفتاح ما زال في العنوان"
+    assert "key=" not in seen["url"]
+    assert seen["header"] == "AIzaSUPERSECRETKEY0123456789"
+
+
+@pytest.mark.parametrize("provider_name", sorted(RESPONSES))
+def test_no_provider_puts_the_key_in_the_url(monkeypatch, provider_name):
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json=RESPONSES[provider_name])
+
+    _patch_transport(monkeypatch, handler)
+    p = make_provider(provider_name, api_key="SENTINELKEY123456789")
+    _run(p.complete("سؤال", model=p.available_models[0]))
+    assert "SENTINELKEY" not in seen["url"]
+
+
+# ============ العميل المشترك ============
+
+def test_http_client_is_reused_across_calls(monkeypatch):
+    """كان كل استدعاء يُنشئ عميلاً جديداً: ألف مصافحة TLS في تشغيل 200×5."""
+    import backend.providers._http as http_mod
+
+    created = {"n": 0}
+    orig = httpx.AsyncClient
+
+    def _counting_factory(*args, **kwargs):
+        created["n"] += 1
+        kwargs["transport"] = httpx.MockTransport(
+            lambda req: httpx.Response(200, json=RESPONSES["anthropic"])
+        )
+        return orig(*args, **kwargs)
+
+    monkeypatch.setattr(http_mod.httpx, "AsyncClient", _counting_factory)
+    http_mod._clients.clear()
+
+    async def _three_calls():
+        p = make_provider("anthropic", api_key="k")
+        for _ in range(3):
+            await p.complete("سؤال", model="claude-opus-5")
+        await http_mod.close_http_client()
+
+    asyncio.run(_three_calls())
+    assert created["n"] == 1, f"أُنشئ {created['n']} عميلاً بدل واحد"
+
+
+def test_close_http_client_is_idempotent():
+    import backend.providers._http as http_mod
+
+    async def _go():
+        await http_mod.get_http_client()
+        await http_mod.close_http_client()
+        await http_mod.close_http_client()  # لا يرمي
+
+    asyncio.run(_go())
+
+
+def test_each_event_loop_gets_its_own_client():
+    """كائنات httpx مرتبطة بحلقتها — مشاركتها بين حلقتين تكسر الاتصال."""
+    import backend.providers._http as http_mod
+
+    http_mod._clients.clear()
+    ids = []
+
+    async def _grab():
+        client = await http_mod.get_http_client()
+        ids.append(id(client))
+        await http_mod.close_http_client()
+
+    asyncio.run(_grab())
+    asyncio.run(_grab())
+    assert ids[0] != ids[1]
+
+
+# ============ زمن الفشل يُقاس فعلاً ============
+
+def test_claude_reports_latency_on_error(monkeypatch):
+    """كان الشرط hasattr دائماً False فالقيمة صفر: يضيع الفرق بين 401 ومهلة 120s."""
+    _patch_transport(monkeypatch, lambda req: httpx.Response(401, json={"error": "no"}))
+    p = make_provider("anthropic", api_key="k")
+    resp = _run(p.complete("سؤال", model="claude-opus-5"))
+    assert resp.error is not None
+    assert resp.latency_ms > 0, "زمن الفشل ما زال صفراً"

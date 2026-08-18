@@ -47,7 +47,8 @@ def test_insert_result_tolerates_none_text(temp_db):
         input_tokens=1, output_tokens=1, cost_usd=0.0,
         response_text=None, judgment=None, error="boom",
     )
-    assert temp_db.get_run(run_id)["details"][0]["response_text"] == ""
+    page = temp_db.get_run_details(run_id)
+    assert page["details"][0]["response_text"] == ""
 
 
 def test_accuracy_and_raw_score_are_separate_metrics(temp_db):

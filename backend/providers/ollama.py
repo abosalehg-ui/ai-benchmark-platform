@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import httpx
 
+from backend.providers._http import get_with_retry, post_with_retry
 from backend.providers.base import (
     BaseProvider,
     ModelResponse,
@@ -26,12 +27,11 @@ class OllamaProvider(BaseProvider):
         يرجع dict فيه models (قائمة) + error (نص أو None).
         """
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                r = await client.get(f"{self.base_url}/api/tags")
-                r.raise_for_status()
-                data = r.json()
-                models = [m["name"] for m in data.get("models", [])]
-                return {"models": models, "error": None}
+            # عبر العميل المشترك: نفس تجميع الاتصالات وسياسة إعادة المحاولة
+            r = await get_with_retry(f"{self.base_url}/api/tags", timeout=15.0)
+            data = r.json()
+            models = [m["name"] for m in data.get("models", [])]
+            return {"models": models, "error": None}
         except httpx.ConnectError as e:
             return {
                 "models": [],
@@ -79,10 +79,9 @@ class OllamaProvider(BaseProvider):
 
         with measure_latency() as t:
             try:
-                async with httpx.AsyncClient(timeout=300.0) as client:
-                    r = await client.post(url, json=body)
-                    r.raise_for_status()
-                    data = r.json()
+                # 300 ثانية: نماذج محلية كبيرة قد تكون بطيئة جداً على CPU
+                r = await post_with_retry(url, json=body, timeout=300.0)
+                data = r.json()
             except httpx.HTTPStatusError as e:
                 return ModelResponse(
                     text="",

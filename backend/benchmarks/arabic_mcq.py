@@ -6,13 +6,13 @@
 """
 from __future__ import annotations
 
-from backend.benchmarks.base import BaseBenchmark, Problem, Score
+from backend.benchmarks.base import BaseBenchmark, EvalContext, Problem, Score
 from backend.benchmarks.parsing import (
     ARABIC_LETTERS,
     extract_arabic_letter,
     normalize_arabic_letter,
 )
-from backend.providers.base import BaseProvider, ModelResponse
+from backend.providers.base import ModelResponse
 
 
 class ArabicMCQBenchmark(BaseBenchmark):
@@ -82,7 +82,7 @@ class ArabicMCQBenchmark(BaseBenchmark):
         self,
         problem: Problem,
         response: ModelResponse,
-        judge_provider: BaseProvider | None = None,
+        ctx: EvalContext,
     ) -> Score:
         predicted = extract_arabic_letter(response.text)
         expected = (

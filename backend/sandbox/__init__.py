@@ -1,9 +1,16 @@
 """واجهة موحّدة لكل sandbox backends.
 
 اختيار الـ backend عبر SANDBOX_BACKEND env:
-- "subprocess" (افتراضي): سريع، يعتمد على blacklist
+- "auto" (افتراضي): Docker إن وُجد، وإلا subprocess
 - "docker": آمن، يحتاج Docker مثبّتاً
-- "auto": Docker إن وُجد، وإلا subprocess
+- "subprocess": سريع، يعتمد على blacklist — بلا عزل حقيقي
+
+**لماذا الافتراضي "auto" لا "subprocess":** الكود المُنفَّذ هنا يأتي من نموذج
+لغوي خارجي، والقائمة السوداء في ``base.py`` لا يمكن أن تنجح مبدئياً — بايثون
+يمنح عشرات الطرق للوصول لأي شيء (``importlib``، ``getattr`` على البنى المدمجة،
+وحدات شبكة غير مذكورة مثل ``ftplib``). وهي أصلاً لا تحظر ``open()`` فقراءة
+``~/.ssh`` أو ``~/.aws/credentials`` تمرّ منها. ``auto`` يمنح العزل الحقيقي لمن
+لديه Docker بلا أن يكسر شيئاً على من ليس لديه.
 
 API عام:
 - run_python_code(code, test_code, timeout, enforce_safety) -> SandboxResult
@@ -24,17 +31,28 @@ from backend.sandbox.base import (
 
 
 def _choose_backend() -> str:
-    pref = os.getenv("SANDBOX_BACKEND", "subprocess").lower()
+    pref = os.getenv("SANDBOX_BACKEND", "auto").lower()
     if pref == "docker":
         return "docker"
-    if pref == "auto":
-        return "docker" if docker_runner.is_available() else "subprocess"
-    return "subprocess"
+    if pref == "subprocess":
+        return "subprocess"
+    # "auto" وأي قيمة غير معروفة: نفضّل العزل الحقيقي متى توفّر
+    return "docker" if docker_runner.is_available() else "subprocess"
 
 
 def current_backend_name() -> str:
     """ارجع اسم backend الذي سيُستخدم في الاستدعاء التالي."""
     return _choose_backend()
+
+
+#: نصّ صريح عن حدود مسار subprocess. الصيغة القديمة («مناسب للاستخدام المحلي
+#: فقط») كانت تُقلّل من الخطر: «محلي» هو بالضبط المكان الذي فيه مفاتيح المستخدم
+#: ومستودعاته، والقائمة السوداء لا تحمي منه.
+UNISOLATED_NOTE = (
+    "subprocess بلا عزل حقيقي: القائمة السوداء لا تمنع قراءة الملفات "
+    "(‎~/.ssh‎، ‎~/.aws‎) ولا الشبكة الصادرة. كود النماذج سيُنفَّذ على جهازك."
+)
+ISOLATED_NOTE = "Docker معزول — بلا شبكة، نظام ملفات للقراءة فقط، ومستخدم غير جذر."
 
 
 def backend_status() -> dict:
@@ -44,10 +62,7 @@ def backend_status() -> dict:
         "backend": chosen,
         "docker_available": docker_runner.is_available(),
         "is_isolated": chosen == "docker",
-        "note": (
-            "Docker معزول — آمن للنشر." if chosen == "docker"
-            else "subprocess يعتمد على blacklist — مناسب للاستخدام المحلي فقط."
-        ),
+        "note": ISOLATED_NOTE if chosen == "docker" else UNISOLATED_NOTE,
     }
 
 
@@ -66,6 +81,8 @@ def run_python_code(
 
 __all__ = [
     "DANGEROUS_IMPORTS",
+    "ISOLATED_NOTE",
+    "UNISOLATED_NOTE",
     "SandboxResult",
     "backend_status",
     "current_backend_name",

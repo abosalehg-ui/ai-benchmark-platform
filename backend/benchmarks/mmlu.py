@@ -1,9 +1,9 @@
 """بنشمارك MMLU — أسئلة متعددة الخيارات في تخصصات متنوعة."""
 from __future__ import annotations
 
-from backend.benchmarks.base import BaseBenchmark, Problem, Score
+from backend.benchmarks.base import BaseBenchmark, EvalContext, Problem, Score
 from backend.benchmarks.parsing import LATIN_LETTERS, extract_latin_letter
-from backend.providers.base import BaseProvider, ModelResponse
+from backend.providers.base import ModelResponse
 
 
 class MMLUBenchmark(BaseBenchmark):
@@ -46,7 +46,7 @@ class MMLUBenchmark(BaseBenchmark):
         self,
         problem: Problem,
         response: ModelResponse,
-        judge_provider: BaseProvider | None = None,
+        ctx: EvalContext,
     ) -> Score:
         predicted = extract_latin_letter(response.text)
         expected = problem.reference.upper() if isinstance(problem.reference, str) else None

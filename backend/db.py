@@ -87,9 +87,23 @@ def init_db() -> None:
         """)
 
 
-def make_cache_key(provider: str, model: str, prompt: str, system: str | None, temperature: float) -> str:
+def make_cache_key(
+    provider: str,
+    model: str,
+    prompt: str,
+    system: str | None,
+    temperature: float,
+    max_tokens: int = 2048,
+) -> str:
+    """مفتاح الـ cache — يشمل كل ما يغيّر الاستجابة.
+
+    ``max_tokens`` جزء من المفتاح لأن الحَكَم يستدعي بـ512 بينما النموذج
+    المستهدف بـ2048، وصارا يتشاركان نفس الـ cache: بلا هذا الحقل قد تُرجَّع
+    استجابة مقصوصة بحدّ مختلف عن المطلوب.
+    """
     payload = json.dumps(
-        {"p": provider, "m": model, "q": prompt, "s": system or "", "t": temperature},
+        {"p": provider, "m": model, "q": prompt, "s": system or "", "t": temperature,
+         "mt": max_tokens},
         ensure_ascii=False,
         sort_keys=True,
     )
@@ -221,7 +235,53 @@ def list_runs(limit: int = 50) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-def get_run(run_id: str) -> dict | None:
+def run_exists(run_id: str) -> bool:
+    with get_conn() as conn:
+        return conn.execute("SELECT 1 FROM runs WHERE id = ?", (run_id,)).fetchone() is not None
+
+
+def get_run_details(
+    run_id: str,
+    *,
+    limit: int = 200,
+    offset: int = 0,
+    provider: str | None = None,
+    model: str | None = None,
+) -> dict:
+    """صفحة واحدة من نتائج الـ run مع العدد الكلّي.
+
+    كانت ``get_run`` تُرجع كل الصفوف دائماً؛ تشغيل بالحدّ الأقصى (2000 صفّ ×
+    ردود حتى 5000 حرف) يتجاوز 10 ميغابايت في استجابة واحدة، وكانت الواجهة
+    تطلبها ثلاث مرّات لنفس الـ run.
+    """
+    where = ["run_id = ?"]
+    params: list = [run_id]
+    if provider:
+        where.append("provider = ?")
+        params.append(provider)
+    if model:
+        where.append("model = ?")
+        params.append(model)
+    clause = " AND ".join(where)
+
+    with get_conn() as conn:
+        total = conn.execute(
+            f"SELECT COUNT(*) AS n FROM results WHERE {clause}", params
+        ).fetchone()["n"]
+        rows = conn.execute(
+            f"SELECT * FROM results WHERE {clause} ORDER BY id LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ).fetchall()
+    return {
+        "run_id": run_id,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "details": [dict(r) for r in rows],
+    }
+
+
+def get_run(run_id: str, include_details: bool = False) -> dict | None:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
         if not row:
@@ -254,12 +314,14 @@ def get_run(run_id: str) -> dict | None:
             d["ci_upper"] = ci["upper"]
             d["ci_margin"] = ci["margin"]
             run["models"].append(d)
-        # كل النتائج التفصيلية
-        details = conn.execute(
-            "SELECT * FROM results WHERE run_id = ? ORDER BY id",
-            (run_id,),
-        ).fetchall()
-        run["details"] = [dict(r) for r in details]
+        # التفاصيل ثقيلة ولا يحتاجها الملخّص — تُطلب من ``get_run_details``
+        # المقسّم، أو هنا صراحةً عند التصدير الكامل
+        if include_details:
+            details = conn.execute(
+                "SELECT * FROM results WHERE run_id = ? ORDER BY id",
+                (run_id,),
+            ).fetchall()
+            run["details"] = [dict(r) for r in details]
         return run
 
 

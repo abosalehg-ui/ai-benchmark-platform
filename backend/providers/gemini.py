@@ -33,7 +33,13 @@ class GeminiProvider(BaseProvider):
         temperature: float = 0.0,
         system: str | None = None,
     ) -> ModelResponse:
-        url = f"{self.BASE_URL}/{model}:generateContent?key={self.api_key}"
+        # المفتاح في ترويسة لا في query string: العنوان يظهر في سجلّات أي
+        # proxy وفي نصوص استثناءات httpx، وكل المزوّدين الآخرين يستخدمون ترويسة
+        url = f"{self.BASE_URL}/{model}:generateContent"
+        headers = {
+            "x-goog-api-key": self.api_key,
+            "Content-Type": "application/json",
+        }
         body: dict = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {
@@ -46,7 +52,7 @@ class GeminiProvider(BaseProvider):
 
         with measure_latency() as t:
             try:
-                r = await post_with_retry(url, json=body, timeout=120.0)
+                r = await post_with_retry(url, headers=headers, json=body, timeout=120.0)
                 data = r.json()
             except httpx.HTTPStatusError as e:
                 return ModelResponse(
