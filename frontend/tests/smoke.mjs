@@ -6,10 +6,14 @@
    الوحيد الخاطئ هو أن أحداً لا يراه. لذلك تفحص هذه الاختبارات ما **يُرى**
    فعلاً في متصفّح، لا ما تُرجعه الدوال.
 
-   يحتاج خادماً يعمل على BASE_URL وفيه تشغيل واحد على الأقل:
+   يحتاج خادماً يعمل على BASE_URL وفيه **تشغيلان** على الأقل — فحص الانحراف
+   لا يُظهر شيئاً بأقلّ من تشغيلين لنفس (البنشمارك، النموذج). سكربت الزرع
+   ينشئهما:
        python scripts/seed_demo_run.py
        uvicorn backend.main:app --port 8000 &
        node frontend/tests/smoke.mjs
+
+   SMOKE_CHROMIUM=/path/to/chromium يتخطّى تنزيل نسخة Playwright.
 */
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
