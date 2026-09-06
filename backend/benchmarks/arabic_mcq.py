@@ -7,11 +7,13 @@
 from __future__ import annotations
 
 from backend.benchmarks.base import BaseBenchmark, EvalContext, Problem, Score
+from backend.benchmarks.baselines import guess_baselines
 from backend.benchmarks.parsing import (
     ARABIC_LETTERS,
     extract_arabic_letter,
     normalize_arabic_letter,
 )
+from backend.benchmarks.shuffling import shuffle_choices
 from backend.providers.base import ModelResponse
 
 
@@ -38,7 +40,17 @@ class ArabicMCQBenchmark(BaseBenchmark):
         )
 
     def _parse_problem(self, raw: dict) -> Problem:
-        metadata: dict = {"choices": raw["choices"]}
+        # الخلط الحتمي يُصلح انحياز موضع الإجابة في الداتاست (انظر
+        # ``shuffling.py``): 130 من 150 إجابة في saudi_legal كانت على «ب».
+        # يجري هنا لا في ``build_prompt`` حتى يكون الترتيب واحداً في الـ prompt
+        # وفي الإجابة المرجعية وفي أي عرض للخيارات.
+        choices, answer = shuffle_choices(
+            raw["choices"],
+            normalize_arabic_letter(raw["answer"]) if isinstance(raw["answer"], str) else raw["answer"],
+            ARABIC_LETTERS,
+            seed=f"{self.name}:{raw['id']}",
+        )
+        metadata: dict = {"choices": choices}
 
         category = raw.get("category", self.default_category)
         if category is not None:
@@ -56,9 +68,12 @@ class ArabicMCQBenchmark(BaseBenchmark):
         return Problem(
             id=raw["id"],
             prompt=raw["question"],
-            reference=raw["answer"],
+            reference=answer,
             metadata=metadata,
         )
+
+    def guess_baselines(self, problems: list[Problem]) -> dict | None:
+        return guess_baselines(problems, ARABIC_LETTERS)
 
     def _header(self, problem: Problem) -> str:
         """سطر السياق أعلى السؤال. تُعاد كتابته في كل بنشمارك فرعي."""

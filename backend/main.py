@@ -1,10 +1,12 @@
 """خادم FastAPI لمنصة البنشمارك."""
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json as jsonlib
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -107,10 +109,15 @@ class TargetBody(BaseModel):
     @field_validator("base_url")
     @classmethod
     def _check_base_url(cls, v: str | None) -> str | None:
+        """فحص لا يلمس الشبكة: مُتحقِّقات Pydantic تعمل داخل حلقة الأحداث.
+
+        العناوين الحرفية (وهي كل ما يهمّ في SSRF النمطي) تُرفض هنا بـ422.
+        الأسماء التي تحتاج DNS تُفحص في ``post_run`` عبر ``asyncio.to_thread``.
+        """
         if not v:
             return None
         try:
-            return validate_base_url(v)
+            return validate_base_url(v, resolve=False)
         except UnsafeURLError as e:
             raise ValueError(str(e)) from e
 
@@ -131,6 +138,9 @@ class RunRequestBody(BaseModel):
     categories: list[str] = Field(default_factory=list, max_length=50)
     difficulties: list[str] = Field(default_factory=list, max_length=20)
     enforce_safety: bool = True
+    #: موافقة صريحة على تنفيذ كود النماذج بلا عزل حقيقي. التحذير وحده كان
+    #: يُعرض **بعد** بدء التنفيذ، أي أنه يخبر المستخدم بما جرى لا بما سيجري.
+    allow_unisolated: bool = False
 
 
 class EstimateRequestBody(BaseModel):
@@ -184,7 +194,9 @@ async def get_ollama_models(base_url: str = "http://localhost:11434"):
     يرجع: {"models": [...], "error": str | null}
     """
     try:
-        safe_url = validate_base_url(base_url)
+        # في thread: ``getaddrinfo`` متزامن وقد يحجب ثوانٍ عند DNS بطيء،
+        # وهذا المسار يُستدعى تلقائياً عند فتح الصفحة
+        safe_url = await asyncio.to_thread(validate_base_url, base_url)
     except UnsafeURLError as e:
         raise HTTPException(400, f"عنوان Ollama مرفوض: {e}") from e
     p = OllamaProvider(base_url=safe_url)
@@ -278,6 +290,29 @@ async def post_run(req: RunRequestBody, request: Request):
             400,
             f"بنشمارك «{req.benchmark}» يحتاج نموذج حَكَم — حدّد judge في الطلب.",
         )
+
+    # الفحص الكامل لعناوين المضيفين (يحلّ DNS) خارج حلقة الأحداث. المُتحقِّق
+    # في ``TargetBody`` فحص الشكل والعناوين الحرفية بلا لمس الشبكة.
+    for t in req.targets:
+        if t.base_url:
+            try:
+                await asyncio.to_thread(validate_base_url, t.base_url)
+            except UnsafeURLError as e:
+                raise HTTPException(400, f"عنوان مرفوض لـ{t.provider}/{t.model}: {e}") from e
+
+    # تنفيذ كود يُنتجه نموذج خارجي على جهاز المستخدم بلا عزل يحتاج قراراً
+    # واعياً. القائمة السوداء في مسار subprocess مُثبَت تجاوزها في
+    # ``tests/test_sandbox.py::test_blacklist_is_known_to_be_bypassable``.
+    if BENCHMARKS[req.benchmark].executes_code and not req.allow_unisolated:
+        sandbox = await asyncio.to_thread(backend_status)
+        if not sandbox["is_isolated"]:
+            raise HTTPException(
+                400,
+                "هذا البنشمارك ينفّذ كوداً يكتبه النموذج، والـ sandbox الحالي "
+                f"({sandbox['backend']}) بلا عزل حقيقي: القائمة السوداء لا تمنع "
+                "قراءة الملفات ولا الشبكة الصادرة. ثبّت Docker (أو اضبط "
+                "SANDBOX_BACKEND=docker)، أو أكّد الموافقة عبر allow_unisolated.",
+            )
 
     targets = [
         ModelTarget(
@@ -387,6 +422,11 @@ def get_run_h2h(run_id: str):
 @app.get("/api/runs/{run_id}/export", dependencies=protected)
 def export_run(run_id: str, format: str = "json"):
     """تصدير نتائج Run كاملة بصيغة JSON أو CSV."""
+    # ``run_id`` يدخل في ترويسة ``Content-Disposition``. هو اليوم 8 محارف hex
+    # من ``uuid4`` فالحقن غير ممكن، لكن الدفاع لا يُبنى على افتراض عن مصدر
+    # المعرّف: نثبّت الشكل هنا بدل الاعتماد على أنه لن يتغيّر
+    if not re.fullmatch(r"[0-9a-f]{1,32}", run_id):
+        raise HTTPException(404, "Run غير موجود")
     # التصدير هو المكان الوحيد الذي يحتاج كل التفاصيل دفعةً واحدة
     run = db.get_run(run_id, include_details=True)
     if not run:

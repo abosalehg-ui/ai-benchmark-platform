@@ -138,3 +138,12 @@ class BaseBenchmark(ABC):
     def system_prompt(self) -> str | None:
         """system prompt افتراضي للبنشمارك."""
         return None
+
+    def guess_baselines(self, problems: list[Problem]) -> dict | None:
+        """خطوط أساس التخمين لهذه المسائل، أو ``None`` إن كانت لا تنطبق.
+
+        بنشماركات الاختيار من متعدّد تُعيد كتابتها (انظر ``baselines.py``):
+        بلا خطّ أساس معروض تُقرأ «91% دقّة» كإنجاز حتى لو كان متخمّن يبلغ 94%.
+        البنشماركات المفتوحة (كود، رياضيات، حَكَم) لا خطّ أساس تخمين لها.
+        """
+        return None

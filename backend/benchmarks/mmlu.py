@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from backend.benchmarks.base import BaseBenchmark, EvalContext, Problem, Score
+from backend.benchmarks.baselines import guess_baselines
 from backend.benchmarks.parsing import LATIN_LETTERS, extract_latin_letter
+from backend.benchmarks.shuffling import shuffle_choices
 from backend.providers.base import ModelResponse
 
 
@@ -21,15 +23,26 @@ class MMLUBenchmark(BaseBenchmark):
         )
 
     def _parse_problem(self, raw: dict) -> Problem:
+        # خلط حتمي مثل البنشماركات العربية: نصف إجابات هذا الملف على B وحده،
+        # ولا خيار واحد على D (انظر ``shuffling.py``)
+        choices, answer = shuffle_choices(
+            raw["choices"],
+            raw["answer"].upper() if isinstance(raw["answer"], str) else raw["answer"],
+            LATIN_LETTERS,
+            seed=f"{self.name}:{raw['id']}",
+        )
         return Problem(
             id=raw["id"],
             prompt=raw["question"],
-            reference=raw["answer"],  # حرف A/B/C/D
+            reference=answer,  # حرف A/B/C/D بعد الخلط
             metadata={
-                "choices": raw["choices"],
+                "choices": choices,
                 "subject": raw.get("subject", "general"),
             },
         )
+
+    def guess_baselines(self, problems: list[Problem]) -> dict | None:
+        return guess_baselines(problems, LATIN_LETTERS)
 
     def build_prompt(self, problem: Problem) -> str:
         choices = problem.metadata["choices"]

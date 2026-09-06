@@ -213,7 +213,10 @@ def insert_result(run_id: str, provider: str, model: str, problem_id: str, **kwa
                 # يتجاوز الافتراضي ويرفع TypeError فيُسقط الـ run كاملاً
                 (kwargs.get("response_text") or "")[:5000],
                 (kwargs.get("judgment") or "")[:1000],
-                kwargs.get("error"),
+                # الخطأ يُقصّ مثل بقيّة النصوص: ``format_exception`` قد يُعيد
+                # جسم استجابة مزوّد كاملاً، فصفّ فاشل واحد كان قادراً على
+                # كتابة مئات الكيلوبايتات في القاعدة
+                (kwargs.get("error") or None) and str(kwargs["error"])[:2000],
             ),
         )
 

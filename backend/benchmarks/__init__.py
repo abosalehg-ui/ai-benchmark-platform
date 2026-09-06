@@ -25,14 +25,15 @@ BENCHMARKS: dict[str, type[BaseBenchmark]] = {
 }
 
 
-def get_benchmark(name: str) -> BaseBenchmark:
+def make_benchmark(name: str) -> BaseBenchmark:
+    """ينشئ نسخة من البنشمارك المطلوب.
+
+    كان لها اسم مرادف ``get_benchmark`` «للتوافق مع runner.py» — والتوافق مع
+    ملف واحد في نفس المستودع ليس سبباً لاسمين لشيء واحد.
+    """
     if name not in BENCHMARKS:
         raise ValueError(f"بنشمارك غير معروف: {name}")
     return BENCHMARKS[name]()
-
-
-# alias للتوافق مع runner.py
-make_benchmark = get_benchmark
 
 
 _DIFFICULTY_ORDER = ["سهل", "متوسط", "صعب", "easy", "medium", "hard"]
@@ -100,7 +101,7 @@ def get_benchmark_difficulties(name: str) -> list[str]:
 
 __all__ = [
     "BENCHMARKS", "ArabicMCQBenchmark", "BaseBenchmark", "EvalContext",
-    "JudgeSpec", "Problem", "Score", "filter_problems", "get_benchmark",
+    "JudgeSpec", "Problem", "Score", "filter_problems",
     "make_benchmark", "list_benchmarks", "get_benchmark_categories",
     "get_benchmark_difficulties",
 ]

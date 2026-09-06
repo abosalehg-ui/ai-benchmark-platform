@@ -25,6 +25,9 @@ def pin_subprocess_backend(monkeypatch):
     الافتراضي أو Docker تتجاوز هذا التثبيت بـ``monkeypatch`` في جسمها.
     """
     monkeypatch.setenv("SANDBOX_BACKEND", "subprocess")
+    # نتيجة ``is_available`` صارت محفوظة لدقيقة (لتفادي تشغيل ``docker version``
+    # لكل مسألة)؛ نُبطلها هنا حتى لا يرث اختبارٌ نتيجةَ اختبار قبله
+    docker_runner.reset_availability_cache()
 
 
 def test_runs_simple_code():
@@ -264,3 +267,43 @@ def test_docker_runner_reports_missing_docker(monkeypatch):
     result = docker_runner.run("print(1)", "", timeout=5)
     assert not result.passed
     assert "Docker غير مثبّت" in result.error
+
+
+# ============ فحص توفّر Docker: عملية واحدة لا واحدة لكل مسألة ============
+
+def test_docker_availability_is_probed_once_per_minute(monkeypatch):
+    """كان ``docker version`` يُشغَّل لكل مسألة HumanEval — 50 عملية لتشغيل 10×5."""
+    docker_runner.reset_availability_cache()
+    probes = []
+
+    def _fake_probe():
+        probes.append(1)
+        return True
+
+    monkeypatch.setattr(docker_runner, "_probe_docker", _fake_probe)
+    for _ in range(10):
+        assert docker_runner.is_available() is True
+    assert len(probes) == 1, f"شُغّل الفحص {len(probes)} مرّة بدل مرّة واحدة"
+
+
+def test_backend_status_asks_about_docker_once(monkeypatch):
+    """نفس السؤال كان يُسأل مرّتين في الاستجابة الواحدة."""
+    docker_runner.reset_availability_cache()
+    calls = []
+    monkeypatch.setattr(docker_runner, "_probe_docker", lambda: calls.append(1) or False)
+    monkeypatch.delenv("SANDBOX_BACKEND", raising=False)
+    status = backend_status()
+    assert status["docker_available"] is False
+    assert len(calls) == 1
+
+
+def test_availability_cache_can_be_invalidated(monkeypatch):
+    """تثبيت Docker أثناء التشغيل يجب أن يُرى بعد إبطال الـ cache."""
+    docker_runner.reset_availability_cache()
+    state = {"available": False}
+    monkeypatch.setattr(docker_runner, "_probe_docker", lambda: state["available"])
+    assert docker_runner.is_available() is False
+    state["available"] = True
+    assert docker_runner.is_available() is False  # ما زال من الـ cache
+    docker_runner.reset_availability_cache()
+    assert docker_runner.is_available() is True

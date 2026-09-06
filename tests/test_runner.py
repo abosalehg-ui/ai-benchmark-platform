@@ -325,3 +325,96 @@ def test_enforce_safety_reaches_the_sandbox(monkeypatch, fake_runner, temp_db):
     _drain(_req(benchmark="humaneval", n_problems=1, enforce_safety=False))
     _drain(_req(benchmark="humaneval", n_problems=1, enforce_safety=True))
     assert captured == [False, True]
+
+
+# ============ فشل نموذج واحد لا يُسقط الـ run كله ============
+
+def test_one_failing_model_does_not_fail_the_whole_run(monkeypatch, fake_runner, temp_db):
+    """كان ``raise errors[0]`` يعلّم الـ run كلّه «failed» ويبثّ ``error``.
+
+    نتائج النماذج الأخرى كانت محفوظة وصحيحة في القاعدة، فالمستخدم يرى فشلاً
+    شاملاً بينما أربعة من خمسة نماذج أكملت.
+    """
+    Fake = fake_runner()
+    healthy = Fake(api_key="")
+
+    class _Broken(BaseProvider):
+        name = "broken"
+        available_models = ["broken-model"]
+
+        async def complete(self, prompt, model, max_tokens=1024, temperature=0.0, system=None):
+            raise RuntimeError("انهار المزوّد")
+
+    def _pick(provider_name, *a, **k):
+        return _Broken(api_key="") if provider_name == "broken" else healthy
+
+    monkeypatch.setattr(runner, "make_provider", _pick)
+
+    events = _drain(_req(n_problems=3, targets=[
+        ModelTarget(provider="fake", model="fake-model", api_key=""),
+        ModelTarget(provider="broken", model="broken-model", api_key=""),
+    ]))
+    kinds = [e.event for e in events]
+
+    # النموذج المتعثّر يُعلَن وحده
+    model_errors = [e for e in events if e.event == "model_error"]
+    assert len(model_errors) == 1
+    assert model_errors[0].payload["model"] == "broken-model"
+
+    # والـ run ينتهي بـ done لا error، بحالة تقول الحقيقة
+    assert "error" not in kinds
+    done = [e for e in events if e.event == "done"][0]
+    assert done.payload["status"] == "completed_with_errors"
+    assert done.payload["failed_models"] == ["broken/broken-model"]
+
+    # نتائج النموذج السليم محفوظة فعلاً
+    from backend import db
+    details = db.get_run_details(events[0].run_id, limit=100)
+    assert details["total"] == 3
+    assert {d["model"] for d in details["details"]} == {"fake-model"}
+
+
+def test_all_models_healthy_still_reports_plain_completed(fake_runner, temp_db):
+    fake_runner()
+    events = _drain(_req(n_problems=2))
+    done = [e for e in events if e.event == "done"][0]
+    assert done.payload["status"] == "completed"
+    assert done.payload["failed_models"] == []
+
+
+# ============ خطّ الأساس يسافر مع التشغيل ============
+
+def test_start_event_carries_guess_baselines(fake_runner, temp_db):
+    """بلا خطّ أساس معروض تُقرأ «91%» كإنجاز حتى لو كان متخمّن يبلغ 94%."""
+    fake_runner()
+    events = _drain(_req(n_problems=10))
+    start = [e for e in events if e.event == "start"][0]
+    base = start.payload["baselines"]
+    assert base["n"] == 10
+    assert 0.0 <= base["majority_letter_accuracy"] <= 1.0
+    assert 0.0 <= base["longest_choice_accuracy"] <= 1.0
+
+
+def test_baselines_are_computed_on_the_run_sample_not_the_whole_dataset(fake_runner, temp_db):
+    """من يشغّل خمس مسائل يحتاج خطّ الأساس لتلك الخمس."""
+    fake_runner()
+    small = [e for e in _drain(_req(n_problems=5)) if e.event == "start"][0]
+    assert small.payload["baselines"]["n"] == 5
+
+
+def test_open_ended_benchmark_has_no_baseline(fake_runner, temp_db):
+    fake_runner()
+    events = _drain(_req(benchmark="gsm8k", n_problems=3))
+    start = [e for e in events if e.event == "start"][0]
+    assert start.payload["baselines"] is None
+
+
+def test_baselines_are_persisted_in_the_run_config(fake_runner, temp_db):
+    """السجل يحتاجها أيضاً: قراءة نتيجة قديمة بلا خطّ أساس نفس التضليل."""
+    import json
+
+    fake_runner()
+    events = _drain(_req(n_problems=6))
+    from backend import db
+    run = db.get_run(events[0].run_id)
+    assert json.loads(run["config_json"])["baselines"]["n"] == 6
