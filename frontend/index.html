@@ -115,6 +115,17 @@
           </fieldset>
         </div>
 
+        <!-- يظهر فقط للبنشماركات التي تنفّذ كوداً حين يكون الـ sandbox بلا
+             عزل: الخادم يرفض التشغيل بـ400 بدون هذه الموافقة -->
+        <div id="unisolated-consent" class="run-alert alert-danger" hidden>
+          <strong>🔓 هذا البنشمارك ينفّذ كوداً يكتبه النموذج</strong>
+          <div id="unisolated-consent-note" class="muted small"></div>
+          <label class="checkbox">
+            <input type="checkbox" id="allow-unisolated" />
+            <span>أفهم أن الكود سيُنفَّذ على جهازي بلا عزل حقيقي، وأوافق.</span>
+          </label>
+        </div>
+
         <div class="run-options">
           <label class="checkbox">
             <input type="checkbox" id="use-cache" checked />
@@ -156,17 +167,21 @@
             </p>
             <div id="live-models"></div>
           </div>
+        </div>
 
+        <div id="run-summary" class="hidden">
+          <h3>ملخّص الاختبار</h3>
+
+          <!-- المخطّط يعيش هنا لا في #progress-area: كان يُرسم داخل عنصر
+               مخفيّ عند فتح تشغيل من السجل، فارتفاعه صفر ولا يراه أحد -->
           <figure class="chart-figure">
             <canvas id="results-chart" aria-hidden="true"></canvas>
             <figcaption class="muted small">
               مخطّط الدقة لكل نموذج — نفس الأرقام متاحة في جدول الملخّص أدناه.
             </figcaption>
           </figure>
-        </div>
 
-        <div id="run-summary" class="hidden">
-          <h3>ملخّص الاختبار</h3>
+          <div id="summary-baseline" class="baseline-box" hidden></div>
           <div id="summary-table"></div>
 
           <div id="h2h-section" class="h2h-section hidden">

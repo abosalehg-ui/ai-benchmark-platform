@@ -4,6 +4,6 @@
   "type": "module",
   "description": "بيان أدنى: يُعلن أن ملفات frontend/js هي ES modules (كما تحمّلها index.html عبر type=\"module\") حتى يستطيع مُشغّل اختبارات Node استيرادها. لا توجد اعتماديات ولا خطوة بناء — الواجهة تبقى Vanilla JS تعمل بلا npm install.",
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test tests/*.test.js"
   }
 }

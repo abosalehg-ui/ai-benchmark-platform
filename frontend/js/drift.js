@@ -7,20 +7,14 @@
    (عدد مسائل أو فلاتر مختلفة) بلا تحذير — الفرق حينها من العيّنة لا من النموذج. */
 
 import { api } from './api.js';
+import { baseChartOptions, seriesColor, themeColor } from './chart-theme.js';
 import { h, replaceChildren, showToast } from './dom.js';
-import { state } from './state.js';
-
-/* ألوان السلاسل — من متغيّرات المظهر حتى تتبدّل مع الوضع الفاتح/الداكن */
-const SERIES_VARS = ['--primary', '--success', '--accent', '--danger', '--warning'];
-
-function themeColor(name, fallback) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-}
+import { DATE_LOCALE, state } from './state.js';
 
 /** تنسيق تاريخ قصير. 'ar-SA' وحده يُفعّل التقويم الهجري في Intl. */
 export function formatPointDate(epochSeconds) {
   return new Date(epochSeconds * 1000)
-    .toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { month: 'short', day: 'numeric' });
+    .toLocaleDateString(DATE_LOCALE, { month: 'short', day: 'numeric' });
 }
 
 /**
@@ -116,12 +110,11 @@ function destroyChart() {
 function renderChart(series) {
   destroyChart();
   const ctx = document.getElementById('drift-chart').getContext('2d');
-  const cText = themeColor('--text', '#e8ecf5');
   const cMuted = themeColor('--text-muted', '#8a93b0');
   const cGrid = themeColor('--border-soft', '#232944');
 
   const datasets = series.map((s, i) => {
-    const color = themeColor(SERIES_VARS[i % SERIES_VARS.length], '#5b8def');
+    const color = seriesColor(i);
     return {
       label: `${s.provider}/${s.model}`,
       data: s.points.map(p => ({ x: p.created_at * 1000, y: +(p.accuracy * 100).toFixed(1) })),
@@ -139,11 +132,10 @@ function renderChart(series) {
     type: 'line',
     data: { datasets },
     options: {
-      responsive: true,
+      ...baseChartOptions(),
       parsing: false,
-      animation: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? false : undefined,
       plugins: {
-        legend: { labels: { color: cText } },
+        ...baseChartOptions().plugins,
         tooltip: {
           callbacks: {
             title: items => formatPointDate(items[0].parsed.x / 1000),
@@ -229,13 +221,47 @@ export function initDrift() {
   document.getElementById('drift-include-partial').addEventListener('change', loadDrift);
 }
 
+/**
+ * البنشمارك الأولى بالعرض: ما اختاره المستخدم، وإلا الأكثر تشغيلاً في سجلّه.
+ *
+ * كان التبويب يفتح على أوّل خيار في القائمة (humaneval) حتى لو كانت كل
+ * التشغيلات على بنشمارك آخر، فيستقبل المستخدم «لا توجد تشغيلات» ولا يعرف أن
+ * عليه تغيير القائمة. دالة نقيّة قابلة للاختبار بلا DOM ولا شبكة.
+ */
+export function pickDefaultBenchmark(runs, available, selected) {
+  if (selected && available.includes(selected)) return selected;
+  const counts = new Map();
+  for (const run of runs || []) {
+    if (!available.includes(run.benchmark)) continue;
+    counts.set(run.benchmark, (counts.get(run.benchmark) || 0) + 1);
+  }
+  let best = null;
+  let bestCount = 0;
+  for (const [benchmark, count] of counts) {
+    if (count > bestCount) {
+      best = benchmark;
+      bestCount = count;
+    }
+  }
+  return best || available[0] || '';
+}
+
 /** يملأ قائمة البنشماركات عند فتح التبويب ثم يحمّل البيانات. */
-export function openDriftTab() {
+export async function openDriftTab() {
   const select = document.getElementById('drift-benchmark');
   if (!select.options.length && state.benchmarks.length) {
     replaceChildren(select, ...state.benchmarks.map(b =>
-      h('option', { value: b.id, selected: b.id === state.selectedBenchmark }, b.name)
+      h('option', { value: b.id }, b.name)
     ));
+    let runs = [];
+    try {
+      runs = (await api.runs()).runs || [];
+    } catch {
+      // السجل غير حرج هنا — نكتفي بما اختاره المستخدم أو بأوّل بنشمارك
+    }
+    select.value = pickDefaultBenchmark(
+      runs, state.benchmarks.map(b => b.id), state.selectedBenchmark,
+    );
   }
   loadDrift();
 }

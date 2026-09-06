@@ -5,7 +5,7 @@ import { h, hideBanner, initModal, replaceChildren, showBanner, showToast } from
 import {
   addModelRow, clampProblems, collectJudge, initJudgePicker, loadKeys,
   loadOllamaModels, renderBenchmarks, renderJudgePicker, renderModels,
-  saveKeys, updateCostEstimate,
+  renderUnisolatedConsent, saveKeys, updateCostEstimate,
 } from './setup.js';
 import {
   appendLiveResult, copySummaryAsMarkdown, loadHistory, refreshChartTheme,
@@ -13,7 +13,7 @@ import {
 } from './results.js';
 import { initDrift, openDriftTab, refreshDriftChartTheme } from './drift.js';
 import { readSSE } from './sse.js';
-import { getKey, state } from './state.js';
+import { getKey, preferredTheme, state } from './state.js';
 
 /* ============ التبويبات (نمط tablist قابل للوصول) ============ */
 
@@ -51,7 +51,11 @@ function initTabs() {
 /* ============ المظهر ============ */
 
 function initTheme() {
-  const saved = localStorage.getItem('theme') || 'dark';
+  // كان الافتراضي 'dark' دائماً، فمتصفّح بتفضيل فاتح يُفتح داكناً
+  const saved = preferredTheme(
+    localStorage.getItem('theme'),
+    window.matchMedia('(prefers-color-scheme: light)').matches,
+  );
   document.documentElement.setAttribute('data-theme', saved);
   const btn = document.getElementById('theme-toggle');
   btn.setAttribute('aria-pressed', String(saved === 'light'));
@@ -72,6 +76,8 @@ async function loadSandboxStatus() {
   const el = document.getElementById('sandbox-status');
   try {
     const data = await api.sandboxStatus();
+    state.sandbox = data;
+    renderUnisolatedConsent();
     el.className = `sandbox-status ${data.is_isolated ? 'sandbox-ok' : 'sandbox-warn'}`;
     replaceChildren(el,
       `${data.is_isolated ? '🛡️' : '⚠️'} `,
@@ -123,7 +129,7 @@ function showRunAlert(id, ...children) {
 }
 
 function hideRunAlerts() {
-  for (const id of ['sandbox-warning', 'budget-unreliable', 'budget-warning']) {
+  for (const id of ['sandbox-warning', 'budget-unreliable', 'budget-warning', 'run-errors']) {
     const box = document.getElementById(id);
     box.hidden = true;
     replaceChildren(box);
@@ -158,6 +164,15 @@ async function runBenchmark() {
     judge = picked.judge;
   }
 
+  // الخادم يرفض التشغيل بـ400 بلا هذه الموافقة؛ نمنع الرحلة الضائعة ونشرح
+  const consent = document.getElementById('allow-unisolated');
+  const consentBox = document.getElementById('unisolated-consent');
+  if (!consentBox.hidden && !consent.checked) {
+    showToast('أكّد موافقتك على التنفيذ بلا عزل قبل التشغيل', 'error');
+    consent.focus();
+    return;
+  }
+
   const n = clampProblems();
   const budgetVal = parseFloat(document.getElementById('budget-usd').value);
   const body = {
@@ -177,6 +192,7 @@ async function runBenchmark() {
     categories: [...state.selectedCategories],
     difficulties: [...state.selectedDifficulties],
     enforce_safety: (localStorage.getItem('enforce_safety') ?? 'true') === 'true',
+    allow_unisolated: consent.checked,
   };
 
   setRunning(true);
@@ -228,6 +244,13 @@ async function runBenchmark() {
           h('div', { class: 'muted small' },
             `الـ backend الحالي: ${data.backend}`
             + (data.docker_available ? ' — Docker متاح، اضبط SANDBOX_BACKEND=docker.' : '')),
+        );
+      } else if (event === 'model_error') {
+        // نموذج واحد تعثّر: نُعلنه ونُكمل — البقيّة نتائجها صحيحة ومحفوظة
+        showRunAlert('run-errors',
+          h('strong', {}, `⚠ ${data.provider}/${data.model} توقّف بخطأ`),
+          h('div', {}, data.message),
+          h('div', { class: 'muted small' }, data.error),
         );
       } else if (event === 'done') {
         renderErrorSummary();

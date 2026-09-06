@@ -43,6 +43,7 @@ export function renderBenchmarks() {
       renderChips('categories', b.categories || [], state.selectedCategories);
       renderChips('difficulties', b.difficulties || [], state.selectedDifficulties);
       renderJudgePicker();  // يظهر/يختفي حسب needs_judge للبنشمارك المختار
+      renderUnisolatedConsent();
       updateCostEstimate();
     });
     return card;
@@ -77,6 +78,29 @@ function renderChips(kind, values, selectedSet) {
     return chip;
   });
   replaceChildren(list, chips);
+}
+
+/* ============ موافقة التنفيذ بلا عزل ============ */
+
+/**
+ * يقرّر ظهور خانة الموافقة: بنشمارك ينفّذ كوداً + sandbox بلا عزل.
+ *
+ * الخادم يرفض هذه الحالة بـ400 بلا ``allow_unisolated``؛ التحذير القديم كان
+ * حدث SSE يظهر **بعد** بدء التنفيذ، أي يخبر المستخدم بما جرى لا بما سيجري.
+ */
+export function renderUnisolatedConsent() {
+  const box = document.getElementById('unisolated-consent');
+  if (!box) return;
+  const bench = state.benchmarks.find(b => b.id === state.selectedBenchmark);
+  const needed = Boolean(bench?.executes_code) && state.sandbox?.is_isolated === false;
+  box.hidden = !needed;
+  if (!needed) {
+    document.getElementById('allow-unisolated').checked = false;
+    return;
+  }
+  document.getElementById('unisolated-consent-note').textContent =
+    `الـ backend الحالي: ${state.sandbox.backend}. ${state.sandbox.note}`
+    + ' ثبّت Docker (أو اضبط SANDBOX_BACKEND=docker) للحصول على عزل حقيقي.';
 }
 
 /* ============ النماذج ============ */
