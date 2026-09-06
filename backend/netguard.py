@@ -38,11 +38,17 @@ def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     )
 
 
-def validate_base_url(url: str) -> str:
+def validate_base_url(url: str, *, resolve: bool = True) -> str:
     """تحقّق من العنوان وارجعه بدون سلاش زائد. يرفع UnsafeURLError عند الرفض.
 
     المضيفون في ``ALLOWED_UPSTREAM_HOSTS`` معفَون من فحص العناوين الخاصة —
     لأنّ Ollama المحلي هو بالضبط ``127.0.0.1`` وهو استخدام مشروع.
+
+    ``resolve=False`` يفحص كل شيء **عدا** حلّ أسماء المضيفين، فيبقى الاستدعاء
+    بلا حجب. يُستخدم في مُتحقِّق Pydantic الذي يعمل داخل حلقة الأحداث؛ الفحص
+    الكامل يجري بعده في ``asyncio.to_thread``. العناوين الحرفية (وهي كل ما
+    يهمّ في هجوم SSRF النمطي: ``169.254.169.254``، ``127.0.0.1``) تُفحص في
+    الحالتين لأنها لا تحتاج DNS أصلاً.
     """
     if not url or not url.strip():
         raise UnsafeURLError("عنوان فارغ")
@@ -57,6 +63,23 @@ def validate_base_url(url: str) -> str:
 
     allowed = _allowed_hosts()
     if host in allowed:
+        return url.strip().rstrip("/")
+
+    # عنوان حرفي: نفحصه مباشرةً بلا أي استدعاء شبكي. كان يمرّ عبر
+    # ``getaddrinfo`` بلا داعٍ — نداء نظام كامل لعنوان معروف سلفاً.
+    try:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        literal = None
+    if literal is not None:
+        if _is_blocked_ip(literal):
+            raise UnsafeURLError(
+                f"العنوان {host} يشير إلى شبكة داخلية ({host}). "
+                "أضِفه إلى ALLOWED_UPSTREAM_HOSTS إن كنت تقصد ذلك."
+            )
+        return url.strip().rstrip("/")
+
+    if not resolve:
         return url.strip().rstrip("/")
 
     # نحلّ الاسم ونفحص كل العناوين المُرجَعة.

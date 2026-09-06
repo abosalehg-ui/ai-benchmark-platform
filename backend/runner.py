@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import AsyncIterator, Awaitable, Callable
 
 from backend import db
@@ -41,6 +42,24 @@ def _get_target_concurrency(n_targets: int) -> int:
     return n_targets if val <= 0 else min(val, n_targets)
 
 
+class StopReason(str, Enum):
+    """سبب توقّف التشغيل قبل إكماله.
+
+    كان سلسلة نصّية تُقارن بـ``"budget"`` و``"disconnect"`` في ثلاثة مواضع
+    متباعدة؛ خطأ مطبعي في أيّها كان يمرّ بصمت ويقلب الحالة النهائية.
+    """
+
+    BUDGET = "budget"
+    DISCONNECT = "disconnect"
+
+
+#: الحالة النهائية المقابلة لكل سبب توقّف
+_STATUS_BY_STOP_REASON = {
+    StopReason.DISCONNECT: "aborted_disconnect",
+    StopReason.BUDGET: "aborted_budget",
+}
+
+
 @dataclass
 class ModelTarget:
     """نموذج مستهدف للاختبار."""
@@ -67,6 +86,7 @@ class RunRequest:
 class ProgressEvent:
     event: str  # "start" | "progress" | "result" | "model_done" | "done" | "error"
                 # | "budget_exceeded" | "budget_unreliable" | "sandbox_warning"
+                # | "model_error"
     run_id: str
     payload: dict
 
@@ -131,6 +151,64 @@ def unpriced_targets(targets: list[ModelTarget]) -> list[str]:
     ]
 
 
+async def _record_result(
+    *,
+    run_id: str,
+    target: ModelTarget,
+    problem: Problem,
+    response,
+    score,
+    cache_hit: bool,
+    call_cost: float,
+    stats: TargetStats,
+    n: int,
+    spent: float,
+) -> ProgressEvent:
+    """يحفظ نتيجة مسألة واحدة ويبني حدث تقدّمها.
+
+    استُخرجت من حلقة ``_run_target``: بقاؤها هناك كان يجعل الحلقة أربعة مستويات
+    تداخل تخلط الجدولة بالتخزين ببناء الأحداث، فلا تُقرأ في شاشة واحدة.
+
+    الكتابة في thread: استدعاء SQLite متزامن هنا يجمّد حلقة الأحداث وبثّ SSE
+    لبقيّة النماذج معه.
+    """
+    error = score.error or response.error
+    await asyncio.to_thread(
+        db.insert_result,
+        run_id=run_id,
+        provider=target.provider,
+        model=target.model,
+        problem_id=problem.id,
+        correct=score.correct,
+        raw_score=score.raw_score,
+        latency_ms=response.latency_ms,
+        input_tokens=response.input_tokens,
+        output_tokens=response.output_tokens,
+        cost_usd=call_cost,
+        response_text=score.model_response,
+        judgment=score.judgment,
+        error=error,
+    )
+    return ProgressEvent(
+        event="progress",
+        run_id=run_id,
+        payload={
+            "provider": target.provider,
+            "model": target.model,
+            "problem_id": problem.id,
+            "i": stats.completed,
+            "n": n,
+            "correct": score.correct,
+            "running_accuracy": stats.accuracy,
+            "running_cost": round(stats.total_cost, 6),
+            "grand_total_cost": round(spent, 6),
+            "latency_ms": round(response.latency_ms, 1),
+            "cache_hit": cache_hit,
+            "error": error,
+        },
+    )
+
+
 async def _run_target(
     *,
     run_id: str,
@@ -142,11 +220,11 @@ async def _run_target(
     concurrency: int,
     stop_event: asyncio.Event,
     is_disconnected: Callable[[], Awaitable[bool]] | None,
-) -> AsyncIterator[tuple[ProgressEvent | None, str | None]]:
+) -> AsyncIterator[tuple[ProgressEvent | None, StopReason | None]]:
     """يشغّل كل مسائل نموذج واحد بالتوازي ويُنتج أحداث التقدّم.
 
-    يُنتج أزواج ``(event, stop_reason)`` حيث ``stop_reason`` واحد من ``None`` /
-    ``"budget"`` / ``"disconnect"``. فصلها عن الحلقة الخارجية أبقى
+    يُنتج أزواج ``(event, stop_reason)`` حيث ``stop_reason`` من ``StopReason``
+    أو ``None``. فصلها عن الحلقة الخارجية أبقى
     ``run_benchmark`` قابلاً للقراءة بدل نطاق واحد يجمع الجدولة والتكلفة
     والتخزين وبثّ الأحداث.
     """
@@ -171,7 +249,7 @@ async def _run_target(
             return problem, response, score, cache_hit
 
     tasks = [asyncio.create_task(_process(p)) for p in problems]
-    stop_reason: str | None = None
+    stop_reason: StopReason | None = None
     try:
         for fut in asyncio.as_completed(tasks):
             problem, response, score, cache_hit = await fut
@@ -185,51 +263,17 @@ async def _run_target(
             stats.total_latency += response.latency_ms
             spent, over_budget, first_over = await budget.add(call_cost)
 
-            # الكتابة في thread: استدعاء SQLite متزامن هنا يجمّد حلقة الأحداث
-            # وبثّ SSE لبقيّة النماذج معه
-            await asyncio.to_thread(
-                db.insert_result,
-                run_id=run_id,
-                provider=target.provider,
-                model=target.model,
-                problem_id=problem.id,
-                correct=score.correct,
-                raw_score=score.raw_score,
-                latency_ms=response.latency_ms,
-                input_tokens=response.input_tokens,
-                output_tokens=response.output_tokens,
-                cost_usd=call_cost,
-                response_text=score.model_response,
-                judgment=score.judgment,
-                error=score.error or response.error,
+            event = await _record_result(
+                run_id=run_id, target=target, problem=problem, response=response,
+                score=score, cache_hit=cache_hit, call_cost=call_cost,
+                stats=stats, n=n, spent=spent,
             )
-
-            yield (
-                ProgressEvent(
-                    event="progress",
-                    run_id=run_id,
-                    payload={
-                        "provider": target.provider,
-                        "model": target.model,
-                        "problem_id": problem.id,
-                        "i": stats.completed,
-                        "n": n,
-                        "correct": score.correct,
-                        "running_accuracy": stats.accuracy,
-                        "running_cost": round(stats.total_cost, 6),
-                        "grand_total_cost": round(spent, 6),
-                        "latency_ms": round(response.latency_ms, 1),
-                        "cache_hit": cache_hit,
-                        "error": score.error or response.error,
-                    },
-                ),
-                None,
-            )
+            yield (event, None)
 
             # فحص الميزانية بعد كل استدعاء (تقريبي: قد يتجاوز بمقدار
             # الاستدعاءات المتوازية المتبقّية قيد التنفيذ)
             if over_budget:
-                stop_reason = "budget"
+                stop_reason = StopReason.BUDGET
                 if first_over:
                     logger.info(
                         "run %s: تجاوز الميزانية (%.6f >= %.6f)",
@@ -254,7 +298,7 @@ async def _run_target(
 
             # لو أغلق العميل الاتصال نوقف ونلغي الباقي (لا نُنفق بلا فائدة)
             if is_disconnected is not None and await is_disconnected():
-                stop_reason = "disconnect"
+                stop_reason = StopReason.DISCONNECT
                 logger.info("run %s: العميل أغلق الاتصال — إيقاف", run_id)
                 yield (None, stop_reason)
                 break
@@ -269,7 +313,7 @@ async def _run_target(
                 tk.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    if stop_reason != "disconnect":
+    if stop_reason is not StopReason.DISCONNECT:
         yield (
             ProgressEvent(
                 event="model_done",
@@ -323,9 +367,15 @@ async def run_benchmark(
     problems = filtered[: req.n_problems]
     n = len(problems)
 
+    # خطّ أساس التخمين على **مسائل هذا التشغيل** بعد الفلترة والقصّ: من يشغّل
+    # خمس مسائل يحتاج خطّ الأساس لتلك الخمس لا للداتاست كاملاً. يُحفظ في
+    # ``config`` ليظهر في السجل أيضاً، لا في التشغيل الحيّ وحده.
+    baselines = benchmark.guess_baselines(problems)
+
     config = {
         "benchmark": req.benchmark,
         "n_problems": n,
+        "baselines": baselines,
         "models": [{"provider": t.provider, "model": t.model} for t in req.targets],
         "judge": (
             {"provider": req.judge.provider, "model": req.judge.model}
@@ -352,6 +402,7 @@ async def run_benchmark(
             "total_calls": n * len(req.targets),
             "use_cache": req.use_cache,
             "budget_usd": req.budget_usd,
+            "baselines": baselines,
         },
     )
 
@@ -388,7 +439,10 @@ async def run_benchmark(
 
     # تحذير قبل أي تنفيذ: كود النماذج سيُشغَّل على الجهاز بلا عزل حقيقي
     if benchmark.executes_code:
-        sandbox = backend_status()
+        # في thread: ``backend_status`` قد يشغّل ``docker version`` بمهلة 5
+        # ثوانٍ، واستدعاؤه هنا مباشرةً كان يجمّد بثّ SSE لكل المستخدمين طوال
+        # تلك المدّة على جهاز فيه docker في الـPATH وdaemon متوقّف
+        sandbox = await asyncio.to_thread(backend_status)
         if not sandbox["is_isolated"]:
             logger.warning("run %s: تشغيل كود بلا عزل (%s)", run_id, sandbox["backend"])
             yield ProgressEvent(
@@ -407,8 +461,8 @@ async def run_benchmark(
     ctx = _build_eval_context(req)
     budget = RunBudget(limit=req.budget_usd)
     stop_event = asyncio.Event()
-    stop_reasons: list[str] = []
-    errors: list[BaseException] = []
+    stop_reasons: list[StopReason] = []
+    errors: list[tuple[ModelTarget, BaseException]] = []
     queue: asyncio.Queue = asyncio.Queue()
     target_sem = asyncio.Semaphore(_get_target_concurrency(len(req.targets)))
     concurrency = _get_concurrency()
@@ -438,9 +492,24 @@ async def run_benchmark(
                         stop_event.set()
         except asyncio.CancelledError:
             raise
-        except Exception as e:  # noqa: BLE001 — نُبلّغ عنه في الحلقة الرئيسية
+        except Exception as e:  # noqa: BLE001 — نُبلّغ عنه حدثاً ونُكمل البقيّة
             logger.exception("run %s: فشل النموذج %s/%s", run_id, target.provider, target.model)
-            errors.append(e)
+            errors.append((target, e))
+            # حدث لهذا النموذج وحده بدل إسقاط الـ run: نتائج النماذج الأخرى
+            # محفوظة وصحيحة، وكان ``raise errors[0]`` يعلّمها كلّها «failed»
+            await queue.put(ProgressEvent(
+                event="model_error",
+                run_id=run_id,
+                payload={
+                    "provider": target.provider,
+                    "model": target.model,
+                    "error": f"{type(e).__name__}: {e}",
+                    "message": (
+                        f"توقّف {target.provider}/{target.model} بخطأ — "
+                        "بقيّة النماذج أكملت وتظهر نتائجها."
+                    ),
+                },
+            ))
         finally:
             await queue.put(_DONE)
 
@@ -454,18 +523,24 @@ async def run_benchmark(
                 continue
             yield item
 
-        if errors:
-            raise errors[0]
-
         stop_reason = stop_reasons[0] if stop_reasons else None
-        final_status = {
-            "disconnect": "aborted_disconnect",
-            "budget": "aborted_budget",
-        }.get(stop_reason or "", "completed")
+        if stop_reason is not None:
+            final_status = _STATUS_BY_STOP_REASON[stop_reason]
+        else:
+            final_status = "completed_with_errors" if errors else "completed"
         await asyncio.to_thread(db.finish_run, run_id, final_status)
         logger.info("run %s: انتهى بحالة %s", run_id, final_status)
-        if stop_reason != "disconnect":
-            yield ProgressEvent(event="done", run_id=run_id, payload={"status": final_status})
+        if stop_reason is not StopReason.DISCONNECT:
+            yield ProgressEvent(
+                event="done",
+                run_id=run_id,
+                payload={
+                    "status": final_status,
+                    "failed_models": [
+                        f"{t.provider}/{t.model}" for t, _ in errors
+                    ],
+                },
+            )
 
     except asyncio.CancelledError:
         await asyncio.to_thread(db.finish_run, run_id, "aborted_disconnect")

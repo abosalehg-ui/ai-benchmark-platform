@@ -379,3 +379,120 @@ def test_sandbox_status_note_warns_when_not_isolated(client, monkeypatch):
     body = client.get("/api/sandbox/status").json()
     assert body["is_isolated"] is False
     assert "بلا عزل حقيقي" in body["note"]
+
+
+# ============ تنفيذ الكود بلا عزل يحتاج موافقة صريحة ============
+
+def _unisolated(monkeypatch):
+    import backend.main as main
+    monkeypatch.setattr(main, "backend_status", lambda: {
+        "backend": "subprocess", "docker_available": False,
+        "is_isolated": False, "note": "بلا عزل",
+    })
+
+
+def _isolated(monkeypatch):
+    import backend.main as main
+    monkeypatch.setattr(main, "backend_status", lambda: {
+        "backend": "docker", "docker_available": True,
+        "is_isolated": True, "note": "معزول",
+    })
+
+
+def test_code_benchmark_is_refused_when_the_sandbox_is_not_isolated(client, monkeypatch):
+    """التحذير كان يظهر **بعد** بدء التنفيذ — أي يخبر بما جرى لا بما سيجري."""
+    _unisolated(monkeypatch)
+    r = client.post("/api/run", json={
+        "benchmark": "humaneval",
+        "n_problems": 1,
+        "targets": [{"provider": "ollama", "model": "llama"}],
+    })
+    assert r.status_code == 400
+    assert "allow_unisolated" in r.json()["detail"]
+
+
+def test_explicit_consent_allows_the_unisolated_run(client, monkeypatch):
+    """الموافقة الواعية تمرّ — لا نمنع من يعرف ما يفعل."""
+    _unisolated(monkeypatch)
+    r = client.post("/api/run", json={
+        "benchmark": "humaneval",
+        "n_problems": 1,
+        "targets": [{"provider": "ollama", "model": "llama"}],
+        "allow_unisolated": True,
+    })
+    assert r.status_code == 200
+
+
+def test_isolated_sandbox_needs_no_consent(client, monkeypatch):
+    _isolated(monkeypatch)
+    r = client.post("/api/run", json={
+        "benchmark": "humaneval",
+        "n_problems": 1,
+        "targets": [{"provider": "ollama", "model": "llama"}],
+    })
+    assert r.status_code == 200
+
+
+def test_non_code_benchmarks_are_never_gated_on_the_sandbox(client, monkeypatch):
+    """بنشمارك لا ينفّذ كوداً لا علاقة له بالعزل."""
+    _unisolated(monkeypatch)
+    r = client.post("/api/run", json={
+        "benchmark": "saudi_legal",
+        "n_problems": 1,
+        "targets": [{"provider": "ollama", "model": "llama"}],
+    })
+    assert r.status_code == 200
+
+
+# ============ الوصول من خارج الجهاز بلا رمز ============
+
+def _remote_client(temp_db, monkeypatch, **env):
+    from fastapi.testclient import TestClient
+
+    monkeypatch.delenv("API_TOKEN", raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    import backend.main as main
+    return TestClient(main.app, client=("192.168.1.50", 5555))
+
+
+def test_network_request_without_a_token_is_refused(temp_db, monkeypatch):
+    """``uvicorn --host 0.0.0.0`` سطرٌ واحد، وبعده يحذف أي جهاز في الشبكة السجل.
+
+    CORS يمنع صفحات المتصفّح لا ``curl``.
+    """
+    monkeypatch.delenv("ALLOW_UNAUTHENTICATED_NETWORK", raising=False)
+    with _remote_client(temp_db, monkeypatch) as c:
+        r = c.get("/api/benchmarks")
+        assert r.status_code == 401
+        assert "API_TOKEN" in r.json()["detail"]
+        assert c.delete("/api/runs/whatever").status_code == 401
+
+
+def test_network_access_can_be_opened_deliberately(temp_db, monkeypatch):
+    """صمّام لمن يقصد فتحها فعلاً — نمنع الخطأ لا الاختيار."""
+    with _remote_client(temp_db, monkeypatch, ALLOW_UNAUTHENTICATED_NETWORK="1") as c:
+        assert c.get("/api/benchmarks").status_code == 200
+
+
+def test_network_access_with_a_token_works_normally(temp_db, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("API_TOKEN", "s3cret")
+    import backend.main as main
+    with TestClient(main.app, client=("192.168.1.50", 5555)) as c:
+        assert c.get("/api/benchmarks").status_code == 401
+        r = c.get("/api/benchmarks", headers={"X-API-Token": "s3cret"})
+        assert r.status_code == 200
+
+
+def test_local_requests_stay_frictionless(client):
+    """التشغيل المحلي بلا رمز كما كان — لا نُدخل احتكاكاً على الاستخدام المقصود."""
+    assert client.get("/api/benchmarks").status_code == 200
+
+
+# ============ شكل run_id في ترويسة التصدير ============
+
+def test_export_rejects_a_malformed_run_id(client):
+    r = client.get('/api/runs/x"; drop/export', params={"format": "json"})
+    assert r.status_code == 404

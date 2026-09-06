@@ -28,5 +28,7 @@ def client(temp_db, monkeypatch):
     monkeypatch.delenv("API_TOKEN", raising=False)
     import backend.main as main
 
-    with TestClient(main.app) as c:
+    # ``client=`` يضبط عنوان الطالب: افتراضه "testclient" ليس عنوان IP، وفحص
+    # «الوصول من خارج الجهاز بلا رمز» في ``security.py`` يقرأه
+    with TestClient(main.app, client=("127.0.0.1", 45678)) as c:
         yield c

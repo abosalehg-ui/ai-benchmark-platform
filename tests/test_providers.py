@@ -337,16 +337,18 @@ def test_each_event_loop_gets_its_own_client():
     import backend.providers._http as http_mod
 
     http_mod._clients.clear()
-    ids = []
+    # نحتفظ بالكائنين حيّين ونقارنهما بـ``is``: مقارنة ``id()`` كانت تقارن
+    # عنوان كائن **حُرِّر** قبل ولادة الثاني، وCPython يعيد استخدام العنوان
+    # بحرّية — فالاختبار كان يفشل عشوائياً حسب حالة مُخصِّص الذاكرة
+    clients = []
 
     async def _grab():
-        client = await http_mod.get_http_client()
-        ids.append(id(client))
+        clients.append(await http_mod.get_http_client())
         await http_mod.close_http_client()
 
     asyncio.run(_grab())
     asyncio.run(_grab())
-    assert ids[0] != ids[1]
+    assert clients[0] is not clients[1]
 
 
 # ============ زمن الفشل يُقاس فعلاً ============
@@ -358,3 +360,43 @@ def test_claude_reports_latency_on_error(monkeypatch):
     resp = _run(p.complete("سؤال", model="claude-opus-5"))
     assert resp.error is not None
     assert resp.latency_ms > 0, "زمن الفشل ما زال صفراً"
+
+
+# ============ netguard: العناوين الحرفية بلا DNS ============
+
+def test_literal_addresses_are_checked_without_dns(monkeypatch):
+    """هجوم SSRF النمطي عنوان حرفي — لا داعي لنداء نظام لحلّ ما هو محلول."""
+    import backend.netguard as netguard
+
+    def _explode(*a, **k):
+        raise AssertionError("getaddrinfo لا يجب أن يُستدعى لعنوان حرفي")
+
+    monkeypatch.setattr(netguard.socket, "getaddrinfo", _explode)
+
+    with pytest.raises(netguard.UnsafeURLError):
+        netguard.validate_base_url("http://169.254.169.254")
+    with pytest.raises(netguard.UnsafeURLError):
+        netguard.validate_base_url("http://10.0.0.5:8080")
+    assert netguard.validate_base_url("http://93.184.216.34/") == "http://93.184.216.34"
+
+
+def test_hostname_check_can_be_deferred_out_of_the_event_loop(monkeypatch):
+    """``resolve=False`` للمُتحقِّق الذي يعمل داخل حلقة الأحداث."""
+    import backend.netguard as netguard
+
+    monkeypatch.setattr(netguard.socket, "getaddrinfo",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("DNS")))
+    assert netguard.validate_base_url("http://example.com/", resolve=False) == "http://example.com"
+
+
+def test_hostname_resolving_to_a_private_ip_is_still_blocked(monkeypatch):
+    import socket as socket_mod
+
+    import backend.netguard as netguard
+
+    monkeypatch.setattr(
+        netguard.socket, "getaddrinfo",
+        lambda *a, **k: [(socket_mod.AF_INET, None, None, "", ("127.0.0.1", 80))],
+    )
+    with pytest.raises(netguard.UnsafeURLError):
+        netguard.validate_base_url("http://sneaky.example/")

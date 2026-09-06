@@ -295,3 +295,31 @@ def test_json_encoding_keeps_arabic_readable(client, temp_db):
     raw = client.get("/api/drift", params={"benchmark": "mmlu"}).text
     assert "مسألة" in raw
     assert json.loads(raw)["n_models"] == 1
+
+
+def test_runs_with_a_failed_model_still_track_the_healthy_ones(temp_db):
+    """``completed_with_errors`` تشغيل مكتمل العيّنة للنماذج التي نجحت.
+
+    استبعاده كلّياً كان يعني أن تعثّر نموذج واحد يُخرج الأربعة الأخرى من
+    التتبّع — عقوبة جماعية على بيانات سليمة.
+    """
+    _seed_run(temp_db, benchmark="saudi_legal", provider="openai", model="gpt-5.4",
+              n=10, n_correct=8, created_at=1000.0, status="completed")
+    _seed_run(temp_db, benchmark="saudi_legal", provider="openai", model="gpt-5.4",
+              n=10, n_correct=3, created_at=2000.0, status="completed_with_errors")
+
+    data = drift_series("saudi_legal")
+    series = [s for s in data["series"] if s["model"] == "gpt-5.4"][0]
+    assert series["n_runs"] == 2
+    assert series["latest_change"] is not None
+
+
+def test_genuinely_aborted_runs_remain_excluded(temp_db):
+    """الميزانية والانقطاع يتركان عيّنة ناقصة فعلاً — تلك تبقى مستبعَدة."""
+    _seed_run(temp_db, benchmark="saudi_legal", provider="openai", model="gpt-5.4",
+              n=10, n_correct=8, created_at=1000.0, status="completed")
+    _seed_run(temp_db, benchmark="saudi_legal", provider="openai", model="gpt-5.4",
+              n=3, n_correct=0, created_at=2000.0, status="aborted_budget")
+
+    series = [s for s in drift_series("saudi_legal")["series"] if s["model"] == "gpt-5.4"][0]
+    assert series["n_runs"] == 1

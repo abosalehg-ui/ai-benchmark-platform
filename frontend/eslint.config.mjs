@@ -6,7 +6,7 @@
    backend/ بينما 2,684 سطر واجهة بلا أي فاحص. */
 export default [
   {
-    files: ['js/**/*.js', 'tests/**/*.js'],
+    files: ['js/**/*.js', 'tests/**/*.js', 'tests/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',
@@ -21,6 +21,8 @@ export default [
         ReadableStream: 'readonly',
         // Chart.js محمّل عبر <script> من frontend/vendor
         Chart: 'readonly',
+        // اختبار الدخان يعمل في Node لا في المتصفّح
+        process: 'readonly',
       },
     },
     rules: {

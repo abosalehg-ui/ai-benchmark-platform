@@ -1,8 +1,9 @@
 /* عرض النتائج: البثّ اللحظي، الملخّص، المقارنة الزوجية، التفاصيل، السجل. */
 
 import { api } from './api.js';
+import { baseChartOptions, themeColor } from './chart-theme.js';
 import { h, modalBody, openModal, replaceChildren, showToast } from './dom.js';
-import { liveKey, state } from './state.js';
+import { DATE_LOCALE, liveKey, state } from './state.js';
 
 /* رموز غير لونية لكل حالة — شبكة النتائج كانت تُميّز بالّلون وحده،
    فهي غير مقروءة لمن لديه عمى ألوان (نحو 8% من الذكور). */
@@ -70,9 +71,12 @@ function buildLiveCard(m) {
       h('span', { class: 'live-model-name' }, `${m.provider} / ${m.model}`),
       h('span', { class: 'live-model-stat', dataset: { role: 'stat' } }, '—'),
     ),
+    // ``role="group"`` لا ``list``: كانت النقاط أزراراً بـ``role="listitem"``،
+    // وهو يستبدل دور الزرّ في شجرة الوصول — فيعلن القارئ الصوتي «عنصر قائمة»
+    // ولا يعرف المستخدم أنها قابلة للضغط أصلاً
     h('div', {
       class: 'dot-grid', dataset: { role: 'dots' },
-      role: 'list', 'aria-label': `نتائج ${m.provider}/${m.model}`,
+      role: 'group', 'aria-label': `نتائج ${m.provider}/${m.model}`,
     }),
   );
 }
@@ -105,7 +109,6 @@ export function appendLiveResult(payload) {
   const dot = h('button', {
     type: 'button',
     class: `dot dot-${kind}`,
-    role: 'listitem',
     // النقطة الأولى وحدها في تسلسل Tab؛ البقيّة بالأسهم (roving tabindex)
     tabindex: grid.firstElementChild ? '-1' : '0',
     title: `${payload.problem_id} — ${meta.label} (${latency}ms)`,
@@ -270,7 +273,46 @@ export async function showSummary(runId) {
   state.summaryRows = data.models.slice();
   state.summarySort = { key: 'accuracy', dir: 'desc' };
   renderSummaryTable();
+  renderBaseline(readBaselines(data));
   renderChart(data.models);
+}
+
+/** يستخرج خطّ الأساس من ``config_json`` المحفوظ مع الـrun. */
+export function readBaselines(run) {
+  try {
+    return JSON.parse(run?.config_json || '{}').baselines || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * يعرض أعلى دقّة يبلغها متخمّن لا يقرأ السؤال.
+ *
+ * بلا هذا السطر تُقرأ «91% دقّة» كإنجاز حتى لو كان اختيار أطول خيار يبلغ 94.7%
+ * على نفس العيّنة — وهو واقع بنشمارك القانون السعودي. الرقم المخفيّ هو الذي
+ * يضلّل، لا الرقم المنخفض.
+ */
+export function renderBaseline(baselines) {
+  const box = document.getElementById('summary-baseline');
+  if (!baselines) {
+    box.hidden = true;
+    replaceChildren(box);
+    return;
+  }
+  const pct = v => `${(v * 100).toFixed(1)}%`;
+  replaceChildren(box,
+    h('strong', {}, '📏 خطّ أساس التخمين على هذه العيّنة: '),
+    h('span', {},
+      `«دائماً ${baselines.majority_letter}» = `,
+      h('bdi', {}, pct(baselines.majority_letter_accuracy)),
+      ' · «أطول خيار» = ',
+      h('bdi', {}, pct(baselines.longest_choice_accuracy)),
+    ),
+    h('div', { class: 'muted small' },
+      'أي دقّة لا تتجاوز هذين الرقمين لا تدلّ على فهم النموذج للمحتوى.'),
+  );
+  box.hidden = false;
 }
 
 export function renderSummaryTable() {
@@ -361,16 +403,9 @@ export function copySummaryAsMarkdown() {
 
 /* ============ المخطّط ============ */
 
-function themeColor(name, fallback) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-}
-
 export function renderChart(models) {
   if (state.chart) state.chart.destroy();
   const ctx = document.getElementById('results-chart').getContext('2d');
-  const cText = themeColor('--text', '#e8ecf5');
-  const cMuted = themeColor('--text-muted', '#8a93b0');
-  const cGrid = themeColor('--border-soft', '#232944');
 
   state.chart = new Chart(ctx, {
     type: 'bar',
@@ -385,15 +420,7 @@ export function renderChart(models) {
         borderWidth: 1,
       }],
     },
-    options: {
-      responsive: true,
-      animation: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? false : undefined,
-      plugins: { legend: { labels: { color: cText } } },
-      scales: {
-        y: { beginAtZero: true, max: 100, ticks: { color: cMuted }, grid: { color: cGrid } },
-        x: { ticks: { color: cMuted }, grid: { color: cGrid } },
-      },
-    },
+    options: baseChartOptions(),
   });
 }
 
@@ -439,6 +466,8 @@ export async function renderH2H(runId) {
         `${pct}%`,
         h('br'),
         h('span', { class: 'h2h-detail' }, `${cell.a_only}/${cell.n_compared}`),
+        // نفس نصّ الـtitle لقارئ الشاشة: كان الوصول إليه بالفأرة وحدها
+        h('span', { class: 'sr-only' }, title),
       );
     }),
   ));
@@ -528,6 +557,22 @@ export async function showDiffView() {
 
 /* ============ السجل ============ */
 
+/* كانت كل حالة غير "completed" تُعرض بشارة حمراء وبنصّها الإنجليزي الخام،
+   فتشغيل "قيد التشغيل" يبدو فشلاً و"توقّف بالميزانية" يبدو عطلاً. */
+const STATUS_META = {
+  completed: { badge: 'success', label: 'مكتمل' },
+  completed_with_errors: { badge: 'warn', label: 'مكتمل مع أخطاء' },
+  running: { badge: 'info', label: 'قيد التشغيل' },
+  aborted_budget: { badge: 'warn', label: 'توقّف: الميزانية' },
+  aborted_disconnect: { badge: 'warn', label: 'توقّف: انقطاع' },
+  failed: { badge: 'error', label: 'فشل' },
+};
+
+/** وصف حالة تشغيل. دالة نقيّة قابلة للاختبار بلا DOM. */
+export function describeStatus(status) {
+  return STATUS_META[status] || { badge: 'error', label: status || 'غير معروف' };
+}
+
 export async function loadHistory() {
   const container = document.getElementById('history-list');
   replaceChildren(container, h('p', { class: 'muted' }, 'جارٍ التحميل...'));
@@ -544,9 +589,10 @@ export async function loadHistory() {
   }
 
   const rows = data.runs.map(r => {
-    // 'ar-SA' وحده يُفعّل التقويم الهجري في Intl، فتختلف التواريخ عن ملفات التصدير
+    // 'ar-SA' وحده يُفعّل التقويم الهجري في Intl. و'nu-latn' ضروري كذلك:
+    // بدونه تظهر التواريخ بأرقام هندية بجانب $0.0040 بأرقام عربية في نفس الصفّ
     const date = new Date(r.created_at * 1000)
-      .toLocaleString('ar-SA-u-ca-gregory', { dateStyle: 'medium', timeStyle: 'short' });
+      .toLocaleString(DATE_LOCALE, { dateStyle: 'medium', timeStyle: 'short' });
     const acc = r.avg_score != null ? `${(r.avg_score * 100).toFixed(1)}%` : '—';
 
     const open = h('button', {
@@ -561,7 +607,10 @@ export async function loadHistory() {
       ),
       h('span', { class: 'history-score' }, acc),
       h('span', { class: 'muted small' }, `$${(r.total_cost || 0).toFixed(4)}`),
-      h('span', { class: `badge ${r.status === 'completed' ? 'success' : 'error'}` }, r.status),
+      (() => {
+        const meta = describeStatus(r.status);
+        return h('span', { class: `badge ${meta.badge}`, title: r.status }, meta.label);
+      })(),
     );
     open.addEventListener('click', async () => {
       await showSummary(r.id);

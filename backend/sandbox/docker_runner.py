@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 
 from backend.sandbox.base import SandboxResult
@@ -24,8 +25,15 @@ DEFAULT_CPUS = os.getenv("SANDBOX_DOCKER_CPUS", "0.5")
 DEFAULT_PIDS = os.getenv("SANDBOX_DOCKER_PIDS", "64")
 
 
-def is_available() -> bool:
-    """هل Docker متاح وقابل للاستخدام؟"""
+#: مهلة صلاحية نتيجة الفحص. الفحص يشغّل عملية ``docker version`` كاملة
+#: (100–300ms على جهاز فيه Docker Desktop)، وكان يُستدعى من ``_choose_backend``
+#: **لكل مسألة** HumanEval ومرّتين في ``backend_status`` — أي 50 عملية قبل بدء
+#: تشغيل من 10 مسائل × 5 نماذج. الحالة تخصّ الجهاز لا الاستدعاء.
+_AVAILABILITY_TTL_SECONDS = 60.0
+_availability_cache: tuple[float, bool] | None = None
+
+
+def _probe_docker() -> bool:
     if shutil.which("docker") is None:
         return False
     try:
@@ -36,6 +44,25 @@ def is_available() -> bool:
         return r.returncode == 0
     except (subprocess.TimeoutExpired, OSError):
         return False
+
+
+def reset_availability_cache() -> None:
+    """يُبطل الـ cache — تستخدمه الاختبارات، ويصلح بعد تثبيت Docker أثناء التشغيل."""
+    global _availability_cache
+    _availability_cache = None
+
+
+def is_available() -> bool:
+    """هل Docker متاح وقابل للاستخدام؟ النتيجة محفوظة لمدّة دقيقة."""
+    global _availability_cache
+    now = time.monotonic()
+    if _availability_cache is not None:
+        checked_at, value = _availability_cache
+        if now - checked_at < _AVAILABILITY_TTL_SECONDS:
+            return value
+    value = _probe_docker()
+    _availability_cache = (now, value)
+    return value
 
 
 def run(

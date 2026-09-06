@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import os
 
 from fastapi import HTTPException, Request
@@ -54,6 +55,21 @@ def api_token_configured() -> bool:
     return bool(os.getenv("API_TOKEN", "").strip())
 
 
+def _is_local_client(host: str) -> bool:
+    """هل الطلب قادم من نفس الجهاز؟"""
+    if not host:
+        return False
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host.lower() == "localhost"
+
+
+def network_access_allowed() -> bool:
+    """صمّام لمن يقصد فعلاً فتح المنصّة على الشبكة بلا رمز."""
+    return os.getenv("ALLOW_UNAUTHENTICATED_NETWORK", "").strip().lower() in {"1", "true", "yes"}
+
+
 async def require_api_token(request: Request) -> None:
     """يفرض ``X-API-Token`` — لكن فقط إذا ضُبِط ``API_TOKEN`` في البيئة.
 
@@ -62,7 +78,22 @@ async def require_api_token(request: Request) -> None:
     """
     expected = os.getenv("API_TOKEN", "").strip()
     if not expected:
-        return
+        # بلا رمز، المنصّة أداة محلية بلا احتكاك — لكن ``uvicorn --host 0.0.0.0``
+        # سطرٌ واحد، وبعده يستطيع أي جهاز في الشبكة حذف السجل عبر
+        # ``DELETE /api/runs/{id}``، وتعبر مفاتيح المستخدم في جسم ``/api/run``
+        # نصّاً صريحاً. CORS يمنع صفحات المتصفّح لا ``curl``.
+        #
+        # حدّ معروف: خلف عاكس (reverse proxy) على نفس الجهاز يصل كل طلب من
+        # 127.0.0.1 فيمرّ هذا الفحص — النشر خلف عاكس يحتاج API_TOKEN فعلاً.
+        client_host = request.client.host if request.client else ""
+        if _is_local_client(client_host) or network_access_allowed():
+            return
+        raise HTTPException(
+            401,
+            "المنصّة مفتوحة بلا مصادقة وهذا الطلب قادم من خارج الجهاز. "
+            "اضبط API_TOKEN في بيئة الخادم (وأدخله في تبويب «المفاتيح»)، "
+            "أو ALLOW_UNAUTHENTICATED_NETWORK=1 إن كنت تقصد فتحها للشبكة.",
+        )
     supplied = request.headers.get("X-API-Token", "")
     # مقارنة ثابتة الزمن — لا نسرّب طول الرمز عبر توقيت الردّ
     if not hmac.compare_digest(supplied, expected):

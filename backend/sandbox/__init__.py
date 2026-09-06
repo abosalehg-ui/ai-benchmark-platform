@@ -56,11 +56,16 @@ ISOLATED_NOTE = "Docker معزول — بلا شبكة، نظام ملفات ل�
 
 
 def backend_status() -> dict:
-    """معلومات عن backend المستخدم — لعرضها في الواجهة."""
+    """معلومات عن backend المستخدم — لعرضها في الواجهة.
+
+    ``is_available`` كان يُستدعى مرّتين هنا (مرّة داخل ``_choose_backend``
+    ومرّة للحقل) — نفس السؤال يُسأل مرّتين في نفس الاستجابة.
+    """
+    docker_available = docker_runner.is_available()
     chosen = _choose_backend()
     return {
         "backend": chosen,
-        "docker_available": docker_runner.is_available(),
+        "docker_available": docker_available,
         "is_isolated": chosen == "docker",
         "note": ISOLATED_NOTE if chosen == "docker" else UNISOLATED_NOTE,
     }

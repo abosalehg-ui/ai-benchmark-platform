@@ -65,7 +65,13 @@ def drift_series(
     ``include_partial``: التشغيلات المتوقّفة (ميزانية أو انقطاع) ناقصة العيّنة،
     فهي مستبعَدة افتراضياً — إدراجها يُظهر هبوطاً وهمياً في الدقّة.
     """
-    status_clause = "" if include_partial else " AND r.status = 'completed'"
+    # ``completed_with_errors`` تشغيل مكتمل العيّنة للنماذج التي نجحت — نموذج
+    # واحد تعثّر لا يُخرج البقيّة من التتبّع. النماذج المتعثّرة تحمل عدد نتائج
+    # مختلفاً، و``scope_key`` (وفيه عدد المسائل) يمنع مقارنتها بتشغيل كامل.
+    status_clause = (
+        "" if include_partial
+        else " AND r.status IN ('completed', 'completed_with_errors')"
+    )
 
     with get_conn() as conn:
         rows = conn.execute(

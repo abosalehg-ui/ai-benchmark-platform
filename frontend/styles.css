@@ -778,6 +778,21 @@ input:focus, select:focus {
 
 .badge.success { background: rgba(63, 185, 138, 0.2); color: var(--success); }
 .badge.error { background: rgba(226, 92, 92, 0.2); color: var(--danger); }
+/* «قيد التشغيل» و«توقّف بالميزانية» كانتا تُعرضان بشارة فشل حمراء */
+.badge.warn { background: color-mix(in srgb, var(--warning) 20%, transparent); color: var(--warning); }
+.badge.info { background: color-mix(in srgb, var(--primary) 20%, transparent); color: var(--primary); }
+
+/* خطّ أساس التخمين فوق جدول الملخّص: «91%» بلا سياق قد تكون أقلّ من التخمين */
+.baseline-box {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  font-size: 13px;
+  line-height: 1.8;
+}
+.baseline-box strong { color: var(--accent); }
 
 .detail-response {
   background: var(--bg-panel);
@@ -1369,6 +1384,25 @@ body.modal-open { overflow: hidden; }
   .dot-grid { gap: 5px; }
   .icon-btn { width: 44px; height: 44px; font-size: 17px; }
   .run-actions { flex-direction: column; }
+
+  /* التبويبات هي التنقّل الرئيسي على الجوّال وكانت 30px ارتفاعاً — قِيست
+     في المتصفّح فعلياً عند 390px */
+  .tab {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* خانة اختيار 13×13 هدف لمس مستحيل. نكبّرها ونضمن ارتفاع الصفّ كاملاً */
+  .checkbox { min-height: 44px; }
+  .checkbox input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
+    flex: none;
+  }
+
+  /* أزرار فرز رأس الجدول كانت 19px ارتفاعاً */
+  .sort-btn { min-height: 44px; }
 }
 
 /* أجهزة اللمس مهما كان عرضها (تابلت أفقي مثلاً) */

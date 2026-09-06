@@ -120,3 +120,17 @@ def test_delete_run_removes_results(temp_db):
     assert temp_db.delete_run(run_id) is True
     assert temp_db.get_run(run_id) is None
     assert temp_db.delete_run(run_id) is False
+
+
+def test_error_column_is_truncated(temp_db):
+    """``format_exception`` قد يُعيد جسم استجابة كاملاً — صفّ واحد كان يكفي لنفخ القاعدة."""
+    run_id = temp_db.create_run("saudi_legal", 1, {})
+    temp_db.insert_result(run_id, "p", "m", "q1", correct=False, error="x" * 9000)
+    row = temp_db.get_run_details(run_id)["details"][0]
+    assert len(row["error"]) == 2000
+
+
+def test_error_column_keeps_none_when_there_is_no_error(temp_db):
+    run_id = temp_db.create_run("saudi_legal", 1, {})
+    temp_db.insert_result(run_id, "p", "m", "q1", correct=True)
+    assert temp_db.get_run_details(run_id)["details"][0]["error"] is None
