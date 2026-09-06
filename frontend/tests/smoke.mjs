@@ -100,7 +100,10 @@ await page.waitForTimeout(1500);
 
 await check('تبويب الانحراف يفتح على بنشمارك فيه بيانات', async () => {
   const empty = await page.locator('#drift-empty').isVisible();
-  assert.equal(empty, false, 'فُتح على بنشمارك بلا تشغيلات');
+  const rows = await page.locator('#drift-table tbody tr').count();
+  const selected = await page.locator('#drift-benchmark').inputValue();
+  assert.equal(empty, false, `فُتح على «${selected}» بلا تشغيلات`);
+  assert.ok(rows > 0, `لا صفوف في جدول الانحراف لـ«${selected}»`);
 });
 
 await check('لا أخطاء console بعد التنقّل الكامل', () => {
