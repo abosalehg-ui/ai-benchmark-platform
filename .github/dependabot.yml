@@ -1,14 +1,28 @@
 version: 2
+
+# Updates are batched: one PR per group per month, so they never pile up and
+# go stale against main. Majors are split out because they are the ones that
+# can break the build.
 updates:
   - package-ecosystem: pip
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     open-pull-requests-limit: 5
     labels: ["dependencies"]
+    groups:
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      major:
+        patterns: ["*"]
+        update-types: ["major"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     labels: ["dependencies", "ci"]
+    groups:
+      github-actions:
+        patterns: ["*"]
